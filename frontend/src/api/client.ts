@@ -1,4 +1,11 @@
-import type { CameraPole, CameraPolePatch, Crossing, CrossingBrief, CrossingPatch } from "../types";
+import type {
+  Crossing,
+  CrossingBrief,
+  CrossingPatch,
+  ItsDevice,
+  ItsDeviceCreate,
+  ItsDevicePatch,
+} from "../types";
 
 const BASE = "/api";
 
@@ -20,12 +27,12 @@ export const api = {
   crossing: (id: number) => request<Crossing>(`/crossings/${id}`),
   updateCrossing: (id: number, patch: CrossingPatch) =>
     request<Crossing>(`/crossings/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  addCameraPole: (crossingId: number, body: CameraPolePatch = {}) =>
-    request<CameraPole>(`/crossings/${crossingId}/camera-poles`, {
+  addItsDevice: (crossingId: number, body: ItsDeviceCreate) =>
+    request<ItsDevice>(`/crossings/${crossingId}/its-devices`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  updateCameraPole: (id: number, patch: CameraPolePatch) =>
-    request<CameraPole>(`/camera-poles/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  removeCameraPole: (id: number) => request<void>(`/camera-poles/${id}`, { method: "DELETE" }),
+  updateItsDevice: (id: number, patch: ItsDevicePatch) =>
+    request<ItsDevice>(`/its-devices/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  removeItsDevice: (id: number) => request<void>(`/its-devices/${id}`, { method: "DELETE" }),
 };

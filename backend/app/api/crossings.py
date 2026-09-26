@@ -6,18 +6,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import CameraPole, Crossing
+from app.models import Crossing, DeviceType, ItsDevice
 from app.schemas import (
-    CameraPoleIn,
-    CameraPoleOut,
-    CameraPoleUpdate,
     CrossingBrief,
     CrossingIn,
     CrossingOut,
     CrossingUpdate,
+    ItsDeviceIn,
+    ItsDeviceOut,
+    ItsDeviceUpdate,
 )
 
 router = APIRouter(prefix="/api", tags=["crossings"])
+
+# для PATCH: какие поля вообще применимы к какому типу устройства
+POLE_FIELDS = {"height", "rotation_deg", "fov_deg", "view_radius"}
+LOOP_FIELDS = {"loop_length"}
+CAMERA_ONLY_FIELDS = {"stream_url"}
 
 
 async def _load(session: AsyncSession, crossing_id: int) -> Crossing:
@@ -27,11 +32,11 @@ async def _load(session: AsyncSession, crossing_id: int) -> Crossing:
     return crossing
 
 
-async def _load_camera(session: AsyncSession, camera_id: int) -> CameraPole:
-    camera = await session.get(CameraPole, camera_id)
-    if camera is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "камера не найдена")
-    return camera
+async def _load_device(session: AsyncSession, device_id: int) -> ItsDevice:
+    device = await session.get(ItsDevice, device_id)
+    if device is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "объект не найден")
+    return device
 
 
 @router.get("/crossings", response_model=list[CrossingBrief])
@@ -88,34 +93,52 @@ async def delete_crossing(crossing_id: int, session: AsyncSession = Depends(get_
     await session.commit()
 
 
-@router.post(
-    "/crossings/{crossing_id}/camera-poles", response_model=CameraPoleOut, status_code=201
-)
-async def add_camera_pole(
-    crossing_id: int, payload: CameraPoleIn, session: AsyncSession = Depends(get_session)
+@router.post("/crossings/{crossing_id}/its-devices", response_model=ItsDeviceOut, status_code=201)
+async def add_its_device(
+    crossing_id: int, payload: ItsDeviceIn, session: AsyncSession = Depends(get_session)
 ):
     await _load(session, crossing_id)
-    camera = CameraPole(crossing_id=crossing_id, **payload.model_dump())
-    session.add(camera)
+    device = ItsDevice(crossing_id=crossing_id, **payload.model_dump())
+    session.add(device)
     await session.commit()
-    await session.refresh(camera)
-    return camera
+    await session.refresh(device)
+    return device
 
 
-@router.patch("/camera-poles/{camera_id}", response_model=CameraPoleOut)
-async def update_camera_pole(
-    camera_id: int, payload: CameraPoleUpdate, session: AsyncSession = Depends(get_session)
+@router.patch("/its-devices/{device_id}", response_model=ItsDeviceOut)
+async def update_its_device(
+    device_id: int, payload: ItsDeviceUpdate, session: AsyncSession = Depends(get_session)
 ):
-    camera = await _load_camera(session, camera_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(camera, key, value)
+    device = await _load_device(session, device_id)
+    data = payload.model_dump(exclude_unset=True)
+
+    if device.device_type is DeviceType.LOOP:
+        rejected = (POLE_FIELDS | CAMERA_ONLY_FIELDS) & data.keys()
+        if rejected:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"недоступно для индукционной петли: {sorted(rejected)}",
+            )
+    else:
+        rejected = LOOP_FIELDS & data.keys()
+        if rejected:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, f"применимо только к петле: {sorted(rejected)}"
+            )
+        if "stream_url" in data and device.device_type is not DeviceType.CAMERA:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "ссылка на трансляцию доступна только для камеры"
+            )
+
+    for key, value in data.items():
+        setattr(device, key, value)
     await session.commit()
-    await session.refresh(camera)
-    return camera
+    await session.refresh(device)
+    return device
 
 
-@router.delete("/camera-poles/{camera_id}", status_code=204)
-async def delete_camera_pole(camera_id: int, session: AsyncSession = Depends(get_session)):
-    camera = await _load_camera(session, camera_id)
-    await session.delete(camera)
+@router.delete("/its-devices/{device_id}", status_code=204)
+async def delete_its_device(device_id: int, session: AsyncSession = Depends(get_session)):
+    device = await _load_device(session, device_id)
+    await session.delete(device)
     await session.commit()

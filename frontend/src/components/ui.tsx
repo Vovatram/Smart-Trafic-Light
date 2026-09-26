@@ -27,6 +27,84 @@ export function Button({ variant = "ghost", active = false, className = "", ...r
   return <button className={`${base} ${styles} ${className}`} {...rest} />;
 }
 
+export function Stepper({
+  label,
+  value,
+  unit = "",
+  min,
+  max,
+  step = 1,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: number;
+  unit?: string;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const round = (n: number) => Math.round(n * 100) / 100;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-slate-300">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <Button
+          disabled={disabled || value <= min}
+          onClick={() => onChange(round(Math.max(min, value - step)))}
+          className="!px-2 !py-1"
+        >
+          −
+        </Button>
+        <span className="w-12 text-center text-sm tabular-nums text-slate-100">
+          {value}
+          {unit}
+        </span>
+        <Button
+          disabled={disabled || value >= max}
+          onClick={() => onChange(round(Math.min(max, value + step)))}
+          className="!px-2 !py-1"
+        >
+          +
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function TextField({
+  label,
+  value,
+  placeholder,
+  onCommit,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onCommit: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-slate-400">{label}</span>
+      <input
+        type="text"
+        defaultValue={value}
+        key={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        onBlur={(event) => {
+          if (event.target.value !== value) onCommit(event.target.value);
+        }}
+        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-slate-100 disabled:opacity-40"
+      />
+    </label>
+  );
+}
+
 export function Select({
   value,
   onChange,

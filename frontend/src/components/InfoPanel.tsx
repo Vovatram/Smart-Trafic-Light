@@ -1,135 +1,19 @@
 import type { ViewName } from "../scene/SceneView";
 import { VIEW_LABEL, VIEW_ORDER } from "../scene/SceneView";
-import type {
-  CameraPole,
-  CameraSide,
-  Crossing,
-  CrossingBrief,
-  PedestrianSignal,
-  VehicleSignal,
-} from "../types";
-import { Button, Card, Select } from "./ui";
-
-function Stepper({
-  label,
-  value,
-  unit = "",
-  min,
-  max,
-  step = 1,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: number;
-  unit?: string;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (value: number) => void;
-  disabled: boolean;
-}) {
-  const round = (n: number) => Math.round(n * 100) / 100;
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-slate-300">{label}</span>
-      <div className="flex items-center gap-1.5">
-        <Button
-          disabled={disabled || value <= min}
-          onClick={() => onChange(round(Math.max(min, value - step)))}
-          className="!px-2 !py-1"
-        >
-          −
-        </Button>
-        <span className="w-10 text-center text-sm tabular-nums text-slate-100">
-          {value}
-          {unit}
-        </span>
-        <Button
-          disabled={disabled || value >= max}
-          onClick={() => onChange(round(Math.min(max, value + step)))}
-          className="!px-2 !py-1"
-        >
-          +
-        </Button>
-      </div>
-    </div>
-  );
-}
+import type { Crossing, CrossingBrief, DeviceType, PedestrianSignal, VehicleSignal } from "../types";
+import { Button, Card, Select, Stepper } from "./ui";
 
 const VEHICLE_LABEL: Record<VehicleSignal, string> = { red: "Красный", yellow: "Жёлтый", green: "Зелёный" };
 const VEHICLE_ORDER: VehicleSignal[] = ["red", "yellow", "green"];
 const PEDESTRIAN_LABEL: Record<PedestrianSignal, string> = { stop: "Стоп", walk: "Идите" };
 const PEDESTRIAN_ORDER: PedestrianSignal[] = ["stop", "walk"];
-const SIDE_LABEL: Record<CameraSide, string> = { left: "слева", right: "справа" };
-const SIDE_ORDER: CameraSide[] = ["left", "right"];
 
-function CameraCard({
-  pole,
-  index,
-  busy,
-  onChange,
-  onRemove,
-}: {
-  pole: CameraPole;
-  index: number;
-  busy: boolean;
-  onChange: (patch: Partial<Pick<CameraPole, "side" | "height" | "rotation_deg">>) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="space-y-2 rounded-lg border border-slate-800 p-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-300">Камера {index + 1}</span>
-        <button
-          disabled={busy}
-          onClick={onRemove}
-          className="text-xs text-slate-500 hover:text-rose-400 disabled:opacity-40"
-        >
-          удалить
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-slate-300">Сторона</span>
-        <div className="flex gap-1.5">
-          {SIDE_ORDER.map((side) => (
-            <Button
-              key={side}
-              active={pole.side === side}
-              disabled={busy}
-              className="!px-2.5 !py-1"
-              onClick={() => onChange({ side })}
-            >
-              {SIDE_LABEL[side]}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      <Stepper
-        label="Высота"
-        value={pole.height}
-        unit=" м"
-        min={1.5}
-        max={12}
-        step={0.5}
-        disabled={busy}
-        onChange={(height) => onChange({ height })}
-      />
-      <Stepper
-        label="Поворот"
-        value={pole.rotation_deg}
-        unit="°"
-        min={0}
-        max={345}
-        step={15}
-        disabled={busy}
-        onChange={(rotation_deg) => onChange({ rotation_deg })}
-      />
-    </div>
-  );
-}
+const DEVICE_LABEL: Record<DeviceType, string> = {
+  camera: "Камера",
+  microwave: "Микроволновый датчик",
+  loop: "Индукционная петля",
+};
+const DEVICE_ORDER: DeviceType[] = ["camera", "microwave", "loop"];
 
 export function InfoPanel({
   crossings,
@@ -143,9 +27,9 @@ export function InfoPanel({
   busy,
   view,
   onView,
-  onAddCamera,
-  onChangeCamera,
-  onRemoveCamera,
+  placingType,
+  onStartPlacing,
+  onStopPlacing,
 }: {
   crossings: CrossingBrief[];
   selectedId: number | null;
@@ -158,9 +42,9 @@ export function InfoPanel({
   busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
-  onAddCamera: () => void;
-  onChangeCamera: (id: number, patch: Partial<Pick<CameraPole, "side" | "height" | "rotation_deg">>) => void;
-  onRemoveCamera: (id: number) => void;
+  placingType: DeviceType | null;
+  onStartPlacing: (type: DeviceType) => void;
+  onStopPlacing: () => void;
 }) {
   return (
     <>
@@ -260,25 +144,45 @@ export function InfoPanel({
       )}
 
       {crossing && (
-        <Card title="Камеры наблюдения">
-          <div className="space-y-2.5">
-            {crossing.camera_poles.length === 0 && (
-              <p className="text-xs text-slate-500">Пока не добавлено ни одной камеры.</p>
-            )}
-            {crossing.camera_poles.map((pole, index) => (
-              <CameraCard
-                key={pole.id}
-                pole={pole}
-                index={index}
-                busy={busy}
-                onChange={(patch) => onChangeCamera(pole.id, patch)}
-                onRemove={() => onRemoveCamera(pole.id)}
-              />
-            ))}
-            <Button variant="primary" className="w-full" disabled={busy} onClick={onAddCamera}>
-              + Добавить столб с камерой
-            </Button>
-          </div>
+        <Card title="ИТС-объекты">
+          {placingType ? (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-200">
+                Режим установки: <span className="font-medium">{DEVICE_LABEL[placingType]}</span>
+              </p>
+              <p className="text-[11px] leading-snug text-slate-500">
+                Кликните по сцене — объект появится в этой точке. Можно ставить несколько подряд.
+              </p>
+              <Button variant="primary" className="w-full" onClick={onStopPlacing}>
+                Готово
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-[11px] leading-snug text-slate-500">
+                Включите вид сверху и кликните по сцене, чтобы поставить объект. Камера и датчик
+                встают на столб у обочины; петля — на полотно дороги.
+              </p>
+              <div className="space-y-1.5">
+                {DEVICE_ORDER.map((type) => (
+                  <Button
+                    key={type}
+                    className="w-full"
+                    disabled={busy}
+                    onClick={() => onStartPlacing(type)}
+                  >
+                    + {DEVICE_LABEL[type]}
+                  </Button>
+                ))}
+              </div>
+              {crossing.its_devices.length > 0 && (
+                <p className="text-[11px] text-slate-500">
+                  Установлено: {crossing.its_devices.length}. Кликните по объекту на сцене, чтобы
+                  изменить параметры или удалить.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
       )}
     </>

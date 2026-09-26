@@ -1,3 +1,4 @@
+import type { ThreeEvent } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
@@ -124,7 +125,13 @@ function useZebra(crossing: Crossing): Box[] {
   }, [crossing]);
 }
 
-export function Roads({ crossing }: { crossing: Crossing }) {
+export function Roads({
+  crossing,
+  onGroundClick,
+}: {
+  crossing: Crossing;
+  onGroundClick?: (event: ThreeEvent<MouseEvent>) => void;
+}) {
   const markings = useMarkings(crossing);
   const zebra = useZebra(crossing);
   const geo = roadGeometry(crossing);
@@ -133,7 +140,12 @@ export function Roads({ crossing }: { crossing: Crossing }) {
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.02, 0]}
+        receiveShadow
+        onClick={onGroundClick}
+      >
         <planeGeometry args={[width + 100, (geo.roadLength + 30) * 2]} />
         <meshStandardMaterial color="#141821" roughness={1} />
       </mesh>

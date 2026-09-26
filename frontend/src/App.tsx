@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api/client";
+import { DeviceEditor } from "./components/DeviceEditor";
 import { InfoPanel } from "./components/InfoPanel";
 import { SceneView, type ViewName } from "./scene/SceneView";
-import type { Crossing, CrossingBrief, PedestrianSignal, VehicleSignal } from "./types";
+import type { Crossing, CrossingBrief, DeviceType, PedestrianSignal, VehicleSignal } from "./types";
 
 export default function App() {
   const [crossings, setCrossings] = useState<CrossingBrief[]>([]);
@@ -12,6 +13,8 @@ export default function App() {
   const [view, setView] = useState<ViewName>("perspective");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [placingType, setPlacingType] = useState<DeviceType | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
 
   useEffect(() => {
     api
@@ -23,37 +26,34 @@ export default function App() {
       .catch((cause: Error) => setError(cause.message));
   }, []);
 
-  const reloadCrossing = useCallback((id: number) => {
-    return api.crossing(id).then((detail) => {
-      setCrossing(detail);
-      setError(null);
-      return detail;
-    });
-  }, []);
-
   useEffect(() => {
     if (selectedId === null) return;
     let cancelled = false;
 
-    reloadCrossing(selectedId).catch((cause: Error) => {
-      if (!cancelled) setError(cause.message);
-    });
+    api
+      .crossing(selectedId)
+      .then((detail) => {
+        if (!cancelled) {
+          setCrossing(detail);
+          setError(null);
+        }
+      })
+      .catch((cause: Error) => {
+        if (!cancelled) setError(cause.message);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedId, reloadCrossing]);
+  }, [selectedId]);
 
-  const run = useCallback(
-    (action: () => Promise<unknown>) => {
-      setBusy(true);
-      setError(null);
-      return action()
-        .catch((cause: Error) => setError(cause.message))
-        .finally(() => setBusy(false));
-    },
-    [],
-  );
+  const run = useCallback((action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    return action()
+      .catch((cause: Error) => setError(cause.message))
+      .finally(() => setBusy(false));
+  }, []);
 
   const patch = useCallback(
     (body: Parameters<typeof api.updateCrossing>[1]) => {
@@ -74,45 +74,66 @@ export default function App() {
     [patch],
   );
 
-  const onAddCamera = useCallback(() => {
-    if (crossing === null) return;
-    const side = crossing.camera_poles.length % 2 === 0 ? "left" : "right";
-    void run(() => api.addCameraPole(crossing.id, { side }).then(() => reloadCrossing(crossing.id)));
-  }, [crossing, run, reloadCrossing]);
+  const onStartPlacing = useCallback((type: DeviceType) => {
+    setPlacingType(type);
+    setSelectedDeviceId(null);
+    setView("top");
+  }, []);
+  const onStopPlacing = useCallback(() => setPlacingType(null), []);
 
-  const onChangeCamera = useCallback(
-    (id: number, cameraPatch: Parameters<typeof api.updateCameraPole>[1]) => {
-      if (crossing === null) return;
+  const onPlace = useCallback(
+    (x: number, z: number) => {
+      if (crossing === null || placingType === null) return;
       void run(() =>
-        api.updateCameraPole(id, cameraPatch).then((updated) => {
+        api.addItsDevice(crossing.id, { device_type: placingType, x, z }).then((device) => {
+          setCrossing((prev) => (prev ? { ...prev, its_devices: [...prev.its_devices, device] } : prev));
+        }),
+      );
+    },
+    [crossing, placingType, run],
+  );
+
+  const onSelectDevice = useCallback((id: number) => setSelectedDeviceId(id), []);
+
+  const onChangeDevice = useCallback(
+    (id: number, devicePatch: Parameters<typeof api.updateItsDevice>[1]) => {
+      void run(() =>
+        api.updateItsDevice(id, devicePatch).then((updated) => {
           setCrossing((prev) =>
             prev
-              ? { ...prev, camera_poles: prev.camera_poles.map((p) => (p.id === id ? updated : p)) }
+              ? { ...prev, its_devices: prev.its_devices.map((d) => (d.id === id ? updated : d)) }
               : prev,
           );
         }),
       );
     },
-    [crossing, run],
+    [run],
   );
 
-  const onRemoveCamera = useCallback(
+  const onDeleteDevice = useCallback(
     (id: number) => {
-      if (crossing === null) return;
       void run(() =>
-        api.removeCameraPole(id).then(() => {
+        api.removeItsDevice(id).then(() => {
           setCrossing((prev) =>
-            prev ? { ...prev, camera_poles: prev.camera_poles.filter((p) => p.id !== id) } : prev,
+            prev ? { ...prev, its_devices: prev.its_devices.filter((d) => d.id !== id) } : prev,
           );
         }),
-      );
+      ).then(() => setSelectedDeviceId(null));
     },
-    [crossing, run],
+    [run],
   );
+
+  const selectedDevice = crossing?.its_devices.find((d) => d.id === selectedDeviceId) ?? null;
 
   return (
     <div className="relative h-full w-full">
-      <SceneView crossing={crossing} view={view} />
+      <SceneView
+        crossing={crossing}
+        view={view}
+        placingType={placingType}
+        onPlace={onPlace}
+        onSelectDevice={onSelectDevice}
+      />
 
       <header className="pointer-events-none absolute top-4 left-4 z-10">
         <h1 className="text-lg font-semibold text-slate-100">
@@ -120,11 +141,14 @@ export default function App() {
           {crossing ? <span className="text-slate-400"> · {crossing.name}</span> : null}
         </h1>
         <p className="text-xs text-slate-400">
-          пешеходный переход через дорогу, можно менять число полос и смотреть с разных сторон
+          пешеходный переход через дорогу — меняйте полосы, ставьте ИТС-объекты и смотрите с разных сторон
         </p>
       </header>
 
-      <aside className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 2rem)" }}>
+      <aside
+        className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto"
+        style={{ maxHeight: "calc(100vh - 2rem)" }}
+      >
         <InfoPanel
           crossings={crossings}
           selectedId={selectedId}
@@ -137,11 +161,21 @@ export default function App() {
           busy={busy}
           view={view}
           onView={setView}
-          onAddCamera={onAddCamera}
-          onChangeCamera={onChangeCamera}
-          onRemoveCamera={onRemoveCamera}
+          placingType={placingType}
+          onStartPlacing={onStartPlacing}
+          onStopPlacing={onStopPlacing}
         />
       </aside>
+
+      {selectedDevice && (
+        <DeviceEditor
+          device={selectedDevice}
+          busy={busy}
+          onChange={(devicePatch) => onChangeDevice(selectedDevice.id, devicePatch)}
+          onDelete={() => onDeleteDevice(selectedDevice.id)}
+          onClose={() => setSelectedDeviceId(null)}
+        />
+      )}
 
       {error !== null && (
         <div className="absolute bottom-4 left-4 z-10 max-w-md rounded-lg border border-rose-500/50 bg-rose-950/80 px-3 py-2 text-sm text-rose-200">

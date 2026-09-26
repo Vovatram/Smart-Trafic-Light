@@ -1,0 +1,174 @@
+import { useMemo } from "react";
+import type { ThreeEvent } from "@react-three/fiber";
+import * as THREE from "three";
+
+import type { Crossing, ItsDevice } from "../types";
+
+const DEG2RAD = Math.PI / 180;
+const POLE_COLOR = "#3b4252";
+
+/** Полупрозрачный сектор обзора: половина угла и дальность заданы устройством. */
+function FovWedge({ halfAngleDeg, length, color }: { halfAngleDeg: number; length: number; color: string }) {
+  const geometry = useMemo(() => {
+    const half = Math.max(1, halfAngleDeg) * DEG2RAD;
+    const segments = 10;
+    const positions: number[] = [0, 0, 0];
+    for (let i = 0; i <= segments; i += 1) {
+      const a = -half + (2 * half * i) / segments;
+      positions.push(Math.sin(a) * length, 0, Math.cos(a) * length);
+    }
+    const index: number[] = [];
+    for (let i = 1; i < segments + 1; i += 1) index.push(0, i, i + 1);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(index);
+    return geo;
+  }, [halfAngleDeg, length]);
+
+  return (
+    <mesh geometry={geometry} position={[0, 0.03, 0]} renderOrder={1}>
+      <meshBasicMaterial color={color} transparent opacity={0.16} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+  );
+}
+
+function CameraHead({ device }: { device: ItsDevice }) {
+  return (
+    <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
+      <mesh castShadow>
+        <boxGeometry args={[0.24, 0.24, 0.5]} />
+        <meshStandardMaterial color="#e5e7eb" roughness={0.4} metalness={0.5} />
+      </mesh>
+      <mesh position={[0, 0, 0.28]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.1, 0.1, 0.14, 16]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.15} metalness={0.2} />
+      </mesh>
+      <mesh position={[0, 0.16, 0.21]}>
+        <sphereGeometry args={[0.03, 8, 8]} />
+        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.5} />
+      </mesh>
+      <FovWedge
+        halfAngleDeg={(device.fov_deg ?? 60) / 2}
+        length={device.view_radius ?? 35}
+        color="#facc15"
+      />
+    </group>
+  );
+}
+
+function MicrowaveHead({ device }: { device: ItsDevice }) {
+  return (
+    <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
+      <mesh castShadow>
+        <boxGeometry args={[0.3, 0.3, 0.22]} />
+        <meshStandardMaterial color="#4c1d95" roughness={0.5} metalness={0.3} />
+      </mesh>
+      <mesh position={[0, 0, 0.13]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.11, 0.02, 8, 16]} />
+        <meshStandardMaterial color="#a78bfa" emissive="#a78bfa" emissiveIntensity={0.6} />
+      </mesh>
+      <FovWedge
+        halfAngleDeg={(device.fov_deg ?? 25) / 2}
+        length={device.view_radius ?? 18}
+        color="#38bdf8"
+      />
+    </group>
+  );
+}
+
+function PoleDevice({
+  device,
+  selectable,
+  onSelect,
+}: {
+  device: ItsDevice;
+  selectable: boolean;
+  onSelect: (id: number) => void;
+}) {
+  const height = device.height ?? 5;
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    if (selectable) onSelect(device.id);
+  };
+
+  return (
+    <group
+      position={[device.x, 0, device.z]}
+      onClick={handleClick}
+      onPointerOver={() => selectable && (document.body.style.cursor = "pointer")}
+      onPointerOut={() => (document.body.style.cursor = "auto")}
+    >
+      <mesh position={[0, height / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.08, 0.11, height, 12]} />
+        <meshStandardMaterial color={POLE_COLOR} roughness={0.6} metalness={0.3} />
+      </mesh>
+      <group position={[0, height, 0]}>
+        {device.device_type === "camera" ? <CameraHead device={device} /> : <MicrowaveHead device={device} />}
+      </group>
+    </group>
+  );
+}
+
+function LoopDevice({
+  device,
+  selectable,
+  onSelect,
+}: {
+  device: ItsDevice;
+  selectable: boolean;
+  onSelect: (id: number) => void;
+}) {
+  const size = device.loop_length ?? 2;
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    if (selectable) onSelect(device.id);
+  };
+
+  const edge = 0.08;
+  return (
+    <group
+      position={[device.x, 0.03, device.z]}
+      onClick={handleClick}
+      onPointerOver={() => selectable && (document.body.style.cursor = "pointer")}
+      onPointerOut={() => (document.body.style.cursor = "auto")}
+    >
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[size, size]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.1} depthWrite={false} />
+      </mesh>
+      {[
+        [0, size / 2 - edge / 2, size, edge],
+        [0, -(size / 2 - edge / 2), size, edge],
+        [size / 2 - edge / 2, 0, edge, size],
+        [-(size / 2 - edge / 2), 0, edge, size],
+      ].map(([ex, ez, sx, sz], i) => (
+        <mesh key={i} position={[ex, 0.001, ez]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[sx, sz]} />
+          <meshBasicMaterial color="#22d3ee" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+export function ItsDevices({
+  crossing,
+  selectable,
+  onSelect,
+}: {
+  crossing: Crossing;
+  selectable: boolean;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <group>
+      {crossing.its_devices.map((device) =>
+        device.device_type === "loop" ? (
+          <LoopDevice key={device.id} device={device} selectable={selectable} onSelect={onSelect} />
+        ) : (
+          <PoleDevice key={device.id} device={device} selectable={selectable} onSelect={onSelect} />
+        ),
+      )}
+    </group>
+  );
+}

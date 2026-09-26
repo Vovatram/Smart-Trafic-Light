@@ -20,11 +20,12 @@ class PedestrianSignal(str, enum.Enum):
     STOP = "stop"
 
 
-class CameraSide(str, enum.Enum):
-    """Какой обочины дороги держится столб с камерой (вид сверху, по X)."""
+class DeviceType(str, enum.Enum):
+    """Тип ИТС-объекта на сцене."""
 
-    LEFT = "left"
-    RIGHT = "right"
+    CAMERA = "camera"
+    MICROWAVE = "microwave"
+    LOOP = "loop"
 
 
 vehicle_signal_enum = Enum(
@@ -33,8 +34,8 @@ vehicle_signal_enum = Enum(
 pedestrian_signal_enum = Enum(
     PedestrianSignal, name="pedestrian_signal", values_callable=lambda e: [m.value for m in e]
 )
-camera_side_enum = Enum(
-    CameraSide, name="camera_side", values_callable=lambda e: [m.value for m in e]
+device_type_enum = Enum(
+    DeviceType, name="its_device_type", values_callable=lambda e: [m.value for m in e]
 )
 
 
@@ -76,32 +77,56 @@ class Crossing(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    camera_poles: Mapped[list[CameraPole]] = relationship(
+    its_devices: Mapped[list[ItsDevice]] = relationship(
         back_populates="crossing", cascade="all, delete-orphan", lazy="selectin",
-        order_by="CameraPole.id",
+        order_by="ItsDevice.id",
     )
 
 
-class CameraPole(Base):
-    """Отдельно стоящий столб с камерой наблюдения — не светофор.
+class ItsDevice(Base):
+    """ИТС-объект на сцене: камера, микроволновый датчик или индукционная петля.
 
-    Позиция вдоль дороги (Z) не хранится: столб всегда стоит снаружи
-    проезжей части напротив перехода (Z = 0) на выбранной обочине (side),
-    фактический X пересчитывается на фронтенде из текущего числа полос.
+    Позиция (x, z) — мировые координаты, куда пользователь кликнул в режиме
+    установки (вид сверху); столб/петля рисуются ровно там, без привязки к
+    текущей геометрии полос. Камера и датчик стоят на столбе и имеют угол
+    обзора/поворота и дальность; петля лежит на полотне дороги и хранит
+    только размер. Ссылка на трансляцию — только у камеры.
     """
 
-    __tablename__ = "camera_poles"
+    __tablename__ = "its_devices"
     __table_args__ = (
-        CheckConstraint("height between 1.5 and 12", name="ck_camera_height"),
-        CheckConstraint("rotation_deg >= 0 and rotation_deg < 360", name="ck_camera_rotation"),
+        CheckConstraint("height is null or height between 1.5 and 12", name="ck_device_height"),
+        CheckConstraint(
+            "rotation_deg is null or (rotation_deg >= 0 and rotation_deg < 360)",
+            name="ck_device_rotation",
+        ),
+        CheckConstraint("fov_deg is null or fov_deg between 5 and 180", name="ck_device_fov"),
+        CheckConstraint(
+            "view_radius is null or view_radius between 2 and 150", name="ck_device_radius"
+        ),
+        CheckConstraint(
+            "loop_length is null or loop_length between 0.5 and 5", name="ck_device_loop_length"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     crossing_id: Mapped[int] = mapped_column(
         ForeignKey("crossings.id", ondelete="CASCADE"), index=True
     )
-    side: Mapped[CameraSide] = mapped_column(camera_side_enum, default=CameraSide.LEFT)
-    height: Mapped[float] = mapped_column(Float, default=5.0)
-    rotation_deg: Mapped[float] = mapped_column(Float, default=0.0)
+    device_type: Mapped[DeviceType] = mapped_column(device_type_enum)
+    x: Mapped[float] = mapped_column(Float)
+    z: Mapped[float] = mapped_column(Float)
 
-    crossing: Mapped[Crossing] = relationship(back_populates="camera_poles")
+    # столб (камера / микроволновый датчик)
+    height: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rotation_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fov_deg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    view_radius: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stream_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # индукционная петля
+    loop_length: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    crossing: Mapped[Crossing] = relationship(back_populates="its_devices")

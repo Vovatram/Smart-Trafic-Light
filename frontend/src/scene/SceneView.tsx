@@ -1,12 +1,14 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
-import type { Crossing } from "../types";
-import { CameraPoles } from "./CameraPoles";
+import type { Crossing, DeviceType } from "../types";
+import { ItsDevices } from "./ItsDevices";
+import { clampPlacement, clampToRoad, roadGeometry } from "./layout";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 
@@ -62,10 +64,33 @@ function CameraPose({
   return null;
 }
 
-export function SceneView({ crossing, view }: { crossing: Crossing | null; view: ViewName }) {
+export function SceneView({
+  crossing,
+  view,
+  placingType,
+  onPlace,
+  onSelectDevice,
+}: {
+  crossing: Crossing | null;
+  view: ViewName;
+  placingType?: DeviceType | null;
+  onPlace?: (x: number, z: number) => void;
+  onSelectDevice?: (id: number) => void;
+}) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
   const positions = viewPositions(roadLength);
+
+  const handleGroundClick = (event: ThreeEvent<MouseEvent>) => {
+    if (!placingType || !crossing || !onPlace) return;
+    event.stopPropagation();
+    const geo = roadGeometry(crossing);
+    const [x, z] =
+      placingType === "loop"
+        ? clampToRoad(geo, event.point.x, event.point.z)
+        : clampPlacement(geo, event.point.x, event.point.z);
+    onPlace(x, z);
+  };
 
   return (
     <Canvas shadows camera={{ position: positions.perspective, fov: 42, near: 0.5, far: 900 }} dpr={[1, 2]}>
@@ -89,9 +114,13 @@ export function SceneView({ crossing, view }: { crossing: Crossing | null; view:
 
       {crossing && (
         <>
-          <Roads crossing={crossing} />
+          <Roads crossing={crossing} onGroundClick={placingType ? handleGroundClick : undefined} />
           <SignalMasts crossing={crossing} />
-          <CameraPoles crossing={crossing} />
+          <ItsDevices
+            crossing={crossing}
+            selectable={!placingType}
+            onSelect={onSelectDevice ?? (() => {})}
+          />
         </>
       )}
 

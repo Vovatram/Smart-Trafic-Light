@@ -1,4 +1,4 @@
-import type { CameraSide, Crossing } from "../types";
+import type { Crossing } from "../types";
 
 /**
  * Геометрия прямого участка дороги с пешеходным переходом посередине.
@@ -24,30 +24,49 @@ export interface RoadGeometry {
   crossingHalf: number;
   poleOffset: number;
   stopOffset: number;
-  cameraOffset: number;
+  /** предел, в котором можно ставить ИТС-объекты кликом (по X и по Z) */
+  placementMarginX: number;
+  placementMarginZ: number;
 }
 
 const POLE_OFFSET = 1.0; // отступ столба светофора от края проезжей части
 const STOP_OFFSET = 1.0; // отступ стоп-линии/столба от края перехода
-const CAMERA_OFFSET = 1.8; // отступ столба камеры — дальше светофорного, чтобы не сливались
+const PLACEMENT_PADDING = 12; // насколько дальше края дороги можно ставить объекты
 
 export function roadGeometry(crossing: Crossing): RoadGeometry {
   const laneWidth = crossing.lane_width;
   const lanesForward = crossing.lanes_forward;
   const lanesBackward = crossing.lanes_backward;
+  const rightEdge = lanesBackward * laneWidth;
+  const leftEdge = -lanesForward * laneWidth;
   return {
     laneWidth,
     lanesForward,
     lanesBackward,
     roadLength: crossing.road_length,
     crossingWidth: crossing.crossing_width,
-    rightEdge: lanesBackward * laneWidth,
-    leftEdge: -lanesForward * laneWidth,
+    rightEdge,
+    leftEdge,
     crossingHalf: crossing.crossing_width / 2,
     poleOffset: POLE_OFFSET,
     stopOffset: STOP_OFFSET,
-    cameraOffset: CAMERA_OFFSET,
+    placementMarginX: Math.max(rightEdge, -leftEdge) + PLACEMENT_PADDING,
+    placementMarginZ: crossing.road_length,
   };
+}
+
+/** Зажимает точку клика в разумные пределы сцены для установки ИТС-объекта. */
+export function clampPlacement(geo: RoadGeometry, x: number, z: number): [number, number] {
+  const cx = Math.min(Math.max(x, -geo.placementMarginX), geo.placementMarginX);
+  const cz = Math.min(Math.max(z, -geo.placementMarginZ), geo.placementMarginZ);
+  return [Math.round(cx * 10) / 10, Math.round(cz * 10) / 10];
+}
+
+/** Зажимает точку клика на полотно дороги — для индукционной петли. */
+export function clampToRoad(geo: RoadGeometry, x: number, z: number): [number, number] {
+  const cx = Math.min(Math.max(x, geo.leftEdge), geo.rightEdge);
+  const cz = Math.min(Math.max(z, -geo.roadLength), geo.roadLength);
+  return [Math.round(cx * 10) / 10, Math.round(cz * 10) / 10];
 }
 
 /** Столб стоит перед переходом со стороны, откуда едет обслуживаемое им направление. */
@@ -82,10 +101,4 @@ export function poles(geo: RoadGeometry): PoleSpec[] {
     });
   }
   return list;
-}
-
-/** Позиция столба с камерой: снаружи дороги, прямо над переходом (Z = 0). */
-export function cameraPolePosition(geo: RoadGeometry, side: CameraSide): [number, number] {
-  const x = side === "left" ? geo.leftEdge - geo.cameraOffset : geo.rightEdge + geo.cameraOffset;
-  return [x, 0];
 }
