@@ -7,6 +7,10 @@ import type {
   ItsDevicePatch,
   SignalCycle,
   SignalCyclePatch,
+  SignalLogEntry,
+  SignalLogEntryCreate,
+  TrafficMetricSnapshot,
+  TrafficMetricSnapshotCreate,
 } from "../types";
 
 const BASE = "/api";
@@ -45,4 +49,20 @@ export const api = {
   updateSignalCycle: (id: number, patch: SignalCyclePatch) =>
     request<SignalCycle>(`/signal-cycles/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeSignalCycle: (id: number) => request<void>(`/signal-cycles/${id}`, { method: "DELETE" }),
+  /** deviceId=0 — только записи уровня перехода; не передан — вся история (переход + все датчики) */
+  logs: (crossingId: number, deviceId?: number) =>
+    request<SignalLogEntry[]>(
+      `/crossings/${crossingId}/logs${deviceId !== undefined ? `?device_id=${deviceId}` : ""}`,
+    ),
+  addLog: (crossingId: number, body: SignalLogEntryCreate) =>
+    request<SignalLogEntry>(`/crossings/${crossingId}/logs`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  metrics: (crossingId: number) => request<TrafficMetricSnapshot[]>(`/crossings/${crossingId}/metrics`),
+  addMetricSnapshot: (crossingId: number, body: TrafficMetricSnapshotCreate) =>
+    request<TrafficMetricSnapshot>(`/crossings/${crossingId}/metrics`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

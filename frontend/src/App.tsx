@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api/client";
 import { DeviceEditor } from "./components/DeviceEditor";
+import { HistoryPanel, type HistoryTab, type HistoryTarget } from "./components/HistoryPanel";
 import { InfoPanel } from "./components/InfoPanel";
 import { SignalModePanel } from "./components/SignalModePanel";
 import { useSignalState } from "./hooks/useSignalState";
@@ -26,6 +27,9 @@ export default function App() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<ReadonlySet<number>>(new Set());
   const [generationPanelOpen, setGenerationPanelOpen] = useState(false);
   const [signalPanelOpen, setSignalPanelOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<HistoryTab>("journal");
+  const [historyTarget, setHistoryTarget] = useState<HistoryTarget>("crossing");
 
   const { live, requestCall } = useSignalState(crossing);
 
@@ -79,6 +83,21 @@ export default function App() {
   const onLanesForward = useCallback((value: number) => patch({ lanes_forward: value }), [patch]);
   const onLanesBackward = useCallback((value: number) => patch({ lanes_backward: value }), [patch]);
   const onRoadLengthChange = useCallback((value: number) => patch({ road_length: value }), [patch]);
+  const onLogRetentionChange = useCallback(
+    (value: number) => patch({ log_retention_hours: value }),
+    [patch],
+  );
+
+  const onOpenHistory = useCallback((tab: HistoryTab) => {
+    setHistoryTarget("crossing");
+    setHistoryTab(tab);
+    setHistoryOpen(true);
+  }, []);
+  const onOpenDeviceJournal = useCallback((deviceId: number) => {
+    setHistoryTarget(deviceId);
+    setHistoryTab("journal");
+    setHistoryOpen(true);
+  }, []);
 
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
@@ -273,6 +292,7 @@ export default function App() {
             onChange={(devicePatch) => onChangeDevice(selectedDevice.id, devicePatch)}
             onDelete={() => onDeleteDevice(selectedDevice.id)}
             onClose={onClearSelection}
+            onOpenJournal={() => onOpenDeviceJournal(selectedDevice.id)}
           />
         </aside>
       )}
@@ -309,6 +329,7 @@ export default function App() {
           onLanesForward={onLanesForward}
           onLanesBackward={onLanesBackward}
           onRoadLengthChange={onRoadLengthChange}
+          onLogRetentionChange={onLogRetentionChange}
           busy={busy}
           view={view}
           onView={setView}
@@ -319,8 +340,19 @@ export default function App() {
           onSelectDevice={onSelectDevice}
           generationOpen={generationPanelOpen}
           onGenerationOpenChange={onGenerationOpenChange}
+          onOpenHistory={onOpenHistory}
         />
       </aside>
+
+      {historyOpen && crossing && (
+        <HistoryPanel
+          crossing={crossing}
+          target={historyTarget}
+          tab={historyTab}
+          onTabChange={setHistoryTab}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
 
       {error !== null && (
         <div className="absolute bottom-4 left-4 z-10 max-w-md rounded-lg border border-rose-500/50 bg-rose-950/80 px-3 py-2 text-sm text-rose-200">

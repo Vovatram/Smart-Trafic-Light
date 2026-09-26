@@ -20,6 +20,7 @@ export function InfoPanel({
   onLanesForward,
   onLanesBackward,
   onRoadLengthChange,
+  onLogRetentionChange,
   busy,
   view,
   onView,
@@ -30,6 +31,7 @@ export function InfoPanel({
   onSelectDevice,
   generationOpen,
   onGenerationOpenChange,
+  onOpenHistory,
 }: {
   crossings: CrossingBrief[];
   selectedId: number | null;
@@ -38,6 +40,7 @@ export function InfoPanel({
   onLanesForward: (value: number) => void;
   onLanesBackward: (value: number) => void;
   onRoadLengthChange: (value: number) => void;
+  onLogRetentionChange: (value: number) => void;
   busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
@@ -48,6 +51,7 @@ export function InfoPanel({
   onSelectDevice: (id: number) => void;
   generationOpen: boolean;
   onGenerationOpenChange: (open: boolean) => void;
+  onOpenHistory: (tab: "journal" | "charts") => void;
 }) {
   const [newDeviceType, setNewDeviceType] = useState<DeviceType>("camera");
 
@@ -94,6 +98,16 @@ export function InfoPanel({
               step={5}
               disabled={busy}
               onChange={onRoadLengthChange}
+            />
+            <Stepper
+              label="Хранить журнал"
+              value={crossing.log_retention_hours}
+              unit=" ч"
+              min={1}
+              max={720}
+              step={1}
+              disabled={busy}
+              onChange={onLogRetentionChange}
             />
           </div>
         )}
@@ -156,6 +170,15 @@ export function InfoPanel({
       {crossing && (
         <Card title="Генерация" open={generationOpen} onOpenChange={onGenerationOpenChange}>
           <></>
+        </Card>
+      )}
+
+      {crossing && (
+        <Card title="История" defaultOpen={false}>
+          <div className="grid grid-cols-2 gap-2">
+            <Button onClick={() => onOpenHistory("journal")}>Журнал</Button>
+            <Button onClick={() => onOpenHistory("charts")}>Графики</Button>
+          </div>
         </Card>
       )}
     </>

@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { api } from "../api/client";
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 
 const TICK_MS = 200;
 const YELLOW_S = 3; // жёлтая фаза машинам перед переходом в красный — не настраивается
+
+/** Короткое описание текущей пары сигналов — для строки журнала. */
+function describePhase(vehicle: VehicleSignal, pedestrian: PedestrianSignal): string {
+  if (vehicle === "green") return "Зелёный машинам";
+  if (vehicle === "yellow") return "Жёлтый машинам";
+  if (pedestrian === "walk") return "Зелёный пешеходам";
+  return "Красный всем";
+}
 
 export interface LiveSignal {
   vehicle: VehicleSignal;
@@ -330,6 +339,37 @@ export function useSignalState(crossing: Crossing | null): {
     }
     // tick растёт каждые TICK_MS — единственная причина пересчитывать это каждый интервал
   }, [crossing, tick]);
+
+  // Строка в журнал — на каждую реальную смену пары сигналов (не на каждый
+  // тик: live.vehicle/pedestrian как раз меняются только в момент перехода
+  // фазы). Первое вычисление после монтирования/смены перехода не логируем
+  // — это не "смена", а просто чтение уже существующего состояния.
+  const logRef = useRef<{ crossingId: number | null; key: string | null }>({
+    crossingId: null,
+    key: null,
+  });
+  useEffect(() => {
+    if (!crossing) return;
+    const key = `${crossing.signal_mode}:${live.vehicle}:${live.pedestrian}`;
+    const state = logRef.current;
+    const isNewCrossing = state.crossingId !== crossing.id;
+    if (isNewCrossing) {
+      logRef.current = { crossingId: crossing.id, key };
+      return;
+    }
+    if (state.key === key) return;
+    logRef.current = { crossingId: crossing.id, key };
+    const active_signal =
+      live.pedestrian === "walk" ? "П" : live.vehicle === "green" ? "А" : null;
+    void api
+      .addLog(crossing.id, {
+        mode: crossing.signal_mode,
+        active_signal,
+        description: describePhase(live.vehicle, live.pedestrian),
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crossing, live.vehicle, live.pedestrian]);
 
   return { live, requestCall };
 }

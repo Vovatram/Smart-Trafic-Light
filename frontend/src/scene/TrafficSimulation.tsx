@@ -3,11 +3,13 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import { api } from "../api/client";
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 import { detectingColors, sensorDevices } from "./detection";
 import { laneCenterX, roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
 
 const COUNT_BADGE_Y = 2.2;
+const SNAPSHOT_INTERVAL_S = 30; // как часто писать снимок интенсивности для графиков
 
 /** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
 function CountBadge({
@@ -339,6 +341,7 @@ export function TrafficSimulation({
     pedLeft: HTMLDivElement | null;
     pedRight: HTMLDivElement | null;
   }>({ forward: null, backward: null, pedLeft: null, pedRight: null });
+  const snapshotElapsed = useRef(0);
 
   const carGroups = useRef<(THREE.Group | null)[]>([]);
   const carHalvesA = useRef<(THREE.Mesh | null)[]>([]);
@@ -378,18 +381,35 @@ export function TrafficSimulation({
       ),
     );
 
+    // считаем всегда (дёшево — просто проход по двум пулам), а не только
+    // при showCounts: снимок для графиков интенсивности пишется независимо
+    // от того, открыта ли панель "Режим светофора"
+    let forward = 0;
+    let backward = 0;
+    let pedLeft = 0;
+    let pedRight = 0;
+    for (const s of cars.current) if (s.active) (s.dir > 0 ? forward++ : backward++);
+    for (const s of peds.current) if (s.active) (s.dir > 0 ? pedLeft++ : pedRight++);
+
     if (showCounts) {
-      let forward = 0;
-      let backward = 0;
-      let pedLeft = 0;
-      let pedRight = 0;
-      for (const s of cars.current) if (s.active) (s.dir > 0 ? forward++ : backward++);
-      for (const s of peds.current) if (s.active) (s.dir > 0 ? pedLeft++ : pedRight++);
       // textContent напрямую, без React state — четыре бейджа не стоят лишнего ре-рендера
       if (countRefs.current.forward) countRefs.current.forward.textContent = String(forward);
       if (countRefs.current.backward) countRefs.current.backward.textContent = String(backward);
       if (countRefs.current.pedLeft) countRefs.current.pedLeft.textContent = String(pedLeft);
       if (countRefs.current.pedRight) countRefs.current.pedRight.textContent = String(pedRight);
+    }
+
+    snapshotElapsed.current += dt;
+    if (snapshotElapsed.current >= SNAPSHOT_INTERVAL_S) {
+      snapshotElapsed.current = 0;
+      void api
+        .addMetricSnapshot(crossing.id, {
+          forward_count: forward,
+          backward_count: backward,
+          ped_left_count: pedLeft,
+          ped_right_count: pedRight,
+        })
+        .catch(() => {});
     }
   });
 

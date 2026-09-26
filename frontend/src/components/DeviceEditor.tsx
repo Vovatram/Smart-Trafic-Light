@@ -13,12 +13,14 @@ export function DeviceEditor({
   onChange,
   onDelete,
   onClose,
+  onOpenJournal,
 }: {
   device: ItsDevice;
   busy: boolean;
   onChange: (patch: ItsDevicePatch) => void;
   onDelete: () => void;
   onClose: () => void;
+  onOpenJournal: () => void;
 }) {
   return (
     <Card title={`Редактирование: ${DEVICE_LABEL[device.device_type]} №${device.id}`}>
@@ -110,6 +112,9 @@ export function DeviceEditor({
           </>
         )}
 
+        <Button className="w-full" onClick={onOpenJournal}>
+          Журнал
+        </Button>
         <div className="flex gap-2 pt-1">
           <Button variant="danger" className="flex-1" disabled={busy} onClick={onDelete}>
             Удалить

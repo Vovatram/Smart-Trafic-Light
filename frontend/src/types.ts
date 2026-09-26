@@ -64,10 +64,41 @@ export interface Crossing extends CrossingBrief {
   button_min_green_s: number;
   /** длительность зелёного пешеходам в режиме "Кнопка" после срабатывания */
   button_peds_s: number;
+  /** сколько часов хранить журнал и снимки интенсивности */
+  log_retention_hours: number;
   created_at: string;
   its_devices: ItsDevice[];
   cycles: SignalCycle[];
 }
+
+export interface SignalLogEntry {
+  id: number;
+  /** null — запись уровня перехода (режим/фаза); иначе — запись по конкретному ИТС-объекту */
+  device_id: number | null;
+  at: string;
+  mode: SignalMode | null;
+  /** "П" — зелёный пешеходам, "А" — зелёный машинам, null — ни то ни другое (жёлтый/красный всем) */
+  active_signal: "П" | "А" | null;
+  description: string;
+}
+
+export type SignalLogEntryCreate = Partial<
+  Pick<SignalLogEntry, "device_id" | "mode" | "active_signal" | "description">
+>;
+
+export interface TrafficMetricSnapshot {
+  id: number;
+  at: string;
+  forward_count: number;
+  backward_count: number;
+  ped_left_count: number;
+  ped_right_count: number;
+}
+
+export type TrafficMetricSnapshotCreate = Pick<
+  TrafficMetricSnapshot,
+  "forward_count" | "backward_count" | "ped_left_count" | "ped_right_count"
+>;
 
 export type CrossingPatch = Partial<
   Pick<
@@ -90,5 +121,6 @@ export type CrossingPatch = Partial<
     | "all_red_after_peds_s"
     | "button_min_green_s"
     | "button_peds_s"
+    | "log_retention_hours"
   >
 >;
