@@ -10,6 +10,7 @@ import type { Crossing, CrossingPatch, DeviceType, PedestrianSignal, VehicleSign
 import { GenerationBadges } from "./GenerationBadges";
 import { ItsDevices, PlacementGhost } from "./ItsDevices";
 import { clampPlacement, clampToRoad, roadGeometry } from "./layout";
+import type { ReplayFrame } from "./replay";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 import { SignalStatusBadge } from "./SignalStatusBadge";
@@ -85,6 +86,7 @@ export function SceneView({
   onClickPedestrianLight,
   onPedestrianWaiting,
   showTrafficCounts,
+  replay,
 }: {
   crossing: Crossing | null;
   view: ViewName;
@@ -107,6 +109,8 @@ export function SceneView({
   onPedestrianWaiting?: () => void;
   /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
   showTrafficCounts?: boolean;
+  /** не пусто — сцена в режиме исторического воспроизведения (таймлайн панели "История") */
+  replay?: ReplayFrame | null;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
@@ -176,18 +180,22 @@ export function SceneView({
           />
           <SignalMasts
             crossing={crossing}
-            vehicleSignal={vehicleSignal}
-            pedestrianSignal={pedestrianSignal}
+            vehicleSignal={replay?.vehicleSignal ?? vehicleSignal}
+            pedestrianSignal={replay?.pedestrianSignal ?? pedestrianSignal}
             onClickVehicle={onClickVehicleLight}
             onClickPedestrian={onClickPedestrianLight}
           />
-          <SignalStatusBadge
-            crossing={crossing}
-            vehicleLabel={vehicleStatusLabel}
-            pedestrianLabel={pedestrianStatusLabel}
-            vehicleSignal={vehicleSignal}
-            pedestrianSignal={pedestrianSignal}
-          />
+          {/* во время replay бейджи-обратный отсчёт скрыты — они считаются от
+              ЖИВОГО состояния и не соответствуют показанному историческому кадру */}
+          {!replay && (
+            <SignalStatusBadge
+              crossing={crossing}
+              vehicleLabel={vehicleStatusLabel}
+              pedestrianLabel={pedestrianStatusLabel}
+              vehicleSignal={vehicleSignal}
+              pedestrianSignal={pedestrianSignal}
+            />
+          )}
           <ItsDevices
             crossing={crossing}
             selectable={!placingType}
@@ -202,6 +210,7 @@ export function SceneView({
             onPedestrianWaiting={onPedestrianWaiting}
             showCounts={showTrafficCounts}
             selectedSensorIds={selectedDeviceIds}
+            replay={replay}
           />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />

@@ -18,6 +18,10 @@ export const PEDESTRIAN_COLOR: Record<PedestrianSignal, string> = {
 };
 
 const POLE_HEIGHT = 4.6;
+// панель светофора выносится вперёд от оси столба вдоль направления, куда
+// она смотрит — иначе плоская панель (глубина 0.12) утопает внутри радиуса
+// самого столба (0.11-0.14) и цвет сигнала почти не виден
+const HEAD_OFFSET = 0.32;
 // экспортируются — на них ориентируется SignalStatusBadge, чтобы поставить
 // бейджи именно над соответствующей головой, а не абы где на столбе
 export const VEHICLE_HEAD_Y = 4.3;
@@ -176,6 +180,13 @@ function Pole({
   onClickVehicle?: () => void;
   onClickPedestrian?: () => void;
 }) {
+  // каждая голова выносится вперёд по СВОЕЙ оси обзора (у авто- и
+  // пешеходной голов разные facing — они смотрят в разные стороны)
+  const vx = x + Math.sin(vehicleFacing) * HEAD_OFFSET;
+  const vz = z + Math.cos(vehicleFacing) * HEAD_OFFSET;
+  const px = x + Math.sin(pedestrianFacing) * HEAD_OFFSET;
+  const pz = z + Math.cos(pedestrianFacing) * HEAD_OFFSET;
+
   return (
     <group>
       <mesh position={[x, POLE_HEIGHT / 2, z]} castShadow>
@@ -183,13 +194,13 @@ function Pole({
         <meshStandardMaterial color="#3b4252" roughness={0.6} metalness={0.3} />
       </mesh>
       <VehicleHead
-        position={[x, VEHICLE_HEAD_Y, z]}
+        position={[vx, VEHICLE_HEAD_Y, vz]}
         rotation={vehicleFacing}
         state={vehicleSignal}
         onClick={onClickVehicle}
       />
       <PedestrianHead
-        position={[x, PEDESTRIAN_HEAD_Y, z]}
+        position={[px, PEDESTRIAN_HEAD_Y, pz]}
         rotation={pedestrianFacing}
         state={pedestrianSignal}
         onClick={onClickPedestrian}

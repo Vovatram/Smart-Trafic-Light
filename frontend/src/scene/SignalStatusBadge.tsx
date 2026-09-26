@@ -10,7 +10,9 @@ import {
   VEHICLE_HEAD_Y,
 } from "./SignalMasts";
 
-const VEHICLE_BADGE_Y = VEHICLE_HEAD_Y + 1.1;
+// ниже, чем раньше (было +1.1) — на этой высоте бейдж надёжнее попадает в
+// кадр во всех пресетах камеры; всё равно выше самой автомобильной головы (4.3)
+const VEHICLE_BADGE_Y = VEHICLE_HEAD_Y + 0.55;
 const PEDESTRIAN_BADGE_Y = PEDESTRIAN_HEAD_Y + 0.4;
 const PEDESTRIAN_SIDE_OFFSET = 1.6; // дальше от дороги, чтобы не закрывать сам светофор
 
@@ -30,10 +32,13 @@ function Badge({
   color: string;
 }) {
   return (
-    <Html position={[x, y, z]} center>
-      <div className="min-w-16 rounded border border-slate-600 bg-slate-900/95 px-2 py-1 text-center shadow-lg">
-        <div className="text-[10px] font-medium tracking-wide text-slate-400 uppercase">{title}</div>
-        <div className="text-xs font-bold tabular-nums" style={{ color }}>
+    <Html position={[x, y, z]} center zIndexRange={[100, 0]}>
+      <div
+        className="min-w-16 rounded border-2 bg-slate-950 px-2 py-1 text-center shadow-[0_0_10px_rgba(0,0,0,0.6)]"
+        style={{ borderColor: color, boxShadow: `0 0 8px 1px ${color}55` }}
+      >
+        <div className="text-[10px] font-medium tracking-wide text-slate-300 uppercase">{title}</div>
+        <div className="text-sm font-bold tabular-nums" style={{ color }}>
           {value}
         </div>
       </div>

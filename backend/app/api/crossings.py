@@ -12,6 +12,7 @@ from app.models import (
     Crossing,
     DeviceType,
     ItsDevice,
+    SceneSnapshot,
     SignalCycle,
     SignalLogEntry,
     TrafficMetricSnapshot,
@@ -24,6 +25,8 @@ from app.schemas import (
     ItsDeviceIn,
     ItsDeviceOut,
     ItsDeviceUpdate,
+    SceneSnapshotIn,
+    SceneSnapshotOut,
     SignalCycleIn,
     SignalCycleOut,
     SignalCycleUpdate,
@@ -218,6 +221,11 @@ async def _prune_old(session: AsyncSession, crossing: Crossing) -> None:
             TrafficMetricSnapshot.crossing_id == crossing.id, TrafficMetricSnapshot.at < cutoff
         )
     )
+    await session.execute(
+        delete(SceneSnapshot).where(
+            SceneSnapshot.crossing_id == crossing.id, SceneSnapshot.at < cutoff
+        )
+    )
 
 
 @router.get("/crossings/{crossing_id}/logs", response_model=list[SignalLogEntryOut])
@@ -282,6 +290,38 @@ async def add_metric_snapshot(
 ):
     crossing = await _load(session, crossing_id)
     snapshot = TrafficMetricSnapshot(crossing_id=crossing_id, **payload.model_dump())
+    session.add(snapshot)
+    await _prune_old(session, crossing)
+    await session.commit()
+    await session.refresh(snapshot)
+    return snapshot
+
+
+@router.get("/crossings/{crossing_id}/scene-snapshots", response_model=list[SceneSnapshotOut])
+async def list_scene_snapshots(
+    crossing_id: int,
+    limit: int = 5000,
+    session: AsyncSession = Depends(get_session),
+):
+    await _load(session, crossing_id)
+    stmt = (
+        select(SceneSnapshot)
+        .where(SceneSnapshot.crossing_id == crossing_id)
+        .order_by(SceneSnapshot.at.desc())
+        .limit(min(limit, 20000))
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars())[::-1]
+
+
+@router.post(
+    "/crossings/{crossing_id}/scene-snapshots", response_model=SceneSnapshotOut, status_code=201
+)
+async def add_scene_snapshot(
+    crossing_id: int, payload: SceneSnapshotIn, session: AsyncSession = Depends(get_session)
+):
+    crossing = await _load(session, crossing_id)
+    snapshot = SceneSnapshot(crossing_id=crossing_id, **payload.model_dump())
     session.add(snapshot)
     await _prune_old(session, crossing)
     await session.commit()

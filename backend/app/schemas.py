@@ -206,3 +206,25 @@ class TrafficMetricSnapshotOut(BaseModel):
     backward_count: int
     ped_left_count: int
     ped_right_count: int
+
+
+# элемент — [x, z, dir] активного слота пула или null для свободного слота
+SlotList = list[list[float] | None]
+
+
+class SceneSnapshotIn(BaseModel):
+    vehicle_signal: VehicleSignal
+    pedestrian_signal: PedestrianSignal
+    cars: SlotList
+    peds: SlotList
+
+
+class SceneSnapshotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    at: datetime
+    vehicle_signal: VehicleSignal
+    pedestrian_signal: PedestrianSignal
+    cars: SlotList
+    peds: SlotList

@@ -5,6 +5,8 @@ import type {
   ItsDevice,
   ItsDeviceCreate,
   ItsDevicePatch,
+  SceneSnapshot,
+  SceneSnapshotCreate,
   SignalCycle,
   SignalCyclePatch,
   SignalLogEntry,
@@ -62,6 +64,15 @@ export const api = {
   metrics: (crossingId: number) => request<TrafficMetricSnapshot[]>(`/crossings/${crossingId}/metrics`),
   addMetricSnapshot: (crossingId: number, body: TrafficMetricSnapshotCreate) =>
     request<TrafficMetricSnapshot>(`/crossings/${crossingId}/metrics`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sceneSnapshots: (crossingId: number, limit?: number) =>
+    request<SceneSnapshot[]>(
+      `/crossings/${crossingId}/scene-snapshots${limit !== undefined ? `?limit=${limit}` : ""}`,
+    ),
+  addSceneSnapshot: (crossingId: number, body: SceneSnapshotCreate) =>
+    request<SceneSnapshot>(`/crossings/${crossingId}/scene-snapshots`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

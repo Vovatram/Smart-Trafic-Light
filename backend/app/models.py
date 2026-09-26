@@ -4,6 +4,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -258,3 +259,28 @@ class TrafficMetricSnapshot(Base):
     backward_count: Mapped[int] = mapped_column(Integer, default=0)
     ped_left_count: Mapped[int] = mapped_column(Integer, default=0)
     ped_right_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SceneSnapshot(Base):
+    """Периодический снимок ПОЛНОГО состояния сцены — для покадрового replay
+    в таймлайне (в отличие от TrafficMetricSnapshot — там только агрегатные
+    счётчики для графиков).
+
+    cars/peds — списки фиксированной длины (по числу слотов в пуле на
+    фронтенде): элемент — [x, z, dir] активного слота или null для
+    свободного; индекс — номер слота в пуле, а не устойчивый "id машины"
+    на весь срок жизни (слоты пула переиспользуются) — для целей плейбэка
+    (интерполяция позиции между двумя соседними снимками) это не важно.
+    """
+
+    __tablename__ = "scene_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    crossing_id: Mapped[int] = mapped_column(
+        ForeignKey("crossings.id", ondelete="CASCADE"), index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    vehicle_signal: Mapped[VehicleSignal] = mapped_column(vehicle_signal_enum)
+    pedestrian_signal: Mapped[PedestrianSignal] = mapped_column(pedestrian_signal_enum)
+    cars: Mapped[list] = mapped_column(JSONB)
+    peds: Mapped[list] = mapped_column(JSONB)

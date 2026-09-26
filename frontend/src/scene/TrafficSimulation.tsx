@@ -4,12 +4,18 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 import { api } from "../api/client";
-import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
+import type { Crossing, PedestrianSignal, SceneSlot, SceneSnapshot, VehicleSignal } from "../types";
 import { detectingColors, sensorDevices } from "./detection";
 import { laneCenterX, roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
+import type { ReplayFrame } from "./replay";
 
 const COUNT_BADGE_Y = 2.2;
 const SNAPSHOT_INTERVAL_S = 30; // как часто писать снимок интенсивности для графиков
+const SCENE_SNAPSHOT_INTERVAL_S = 2; // как часто писать снимок ПОЗИЦИЙ для покадрового replay
+// цвет агентов при историческом воспроизведении — детекция сенсоров в
+// снимке не записана (только позиции), поэтому раскраска здесь фиксированная
+const REPLAY_CAR_COLOR = "#94a3b8";
+const REPLAY_PED_COLOR = "#38bdf8";
 
 /** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
 function CountBadge({
@@ -298,6 +304,31 @@ function applyDetection(
 }
 
 /**
+ * Отрисовка слота из записанного снимка (историческое воспроизведение) —
+ * без детекции сенсоров (она не записывается), фиксированным цветом.
+ */
+function applyReplaySlot(
+  entry: SceneSnapshot["cars"][number],
+  group: THREE.Group | null,
+  halfA: THREE.Mesh | null,
+  halfB: THREE.Mesh | null,
+  axis: "x" | "z",
+  color: string,
+) {
+  if (!group) return;
+  if (!entry) {
+    group.visible = false;
+    return;
+  }
+  const [x, z, dir] = entry;
+  group.visible = true;
+  group.position.set(x, 0, z);
+  group.rotation.y = axis === "z" ? (dir > 0 ? 0 : Math.PI) : dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  if (halfA) (halfA.material as THREE.MeshStandardMaterial).color.set(color);
+  if (halfB) (halfB.material as THREE.MeshStandardMaterial).color.set(color);
+}
+
+/**
  * Процедурная генерация машин и пешеходов: спавн по интенсивности (в час) с
  * каждого из 4 "начал", движение только на зелёный/"идите", отрисовка —
  * только пока агент виден хотя бы одному датчику (камере/микроволновому),
@@ -310,6 +341,7 @@ export function TrafficSimulation({
   onPedestrianWaiting,
   showCounts,
   selectedSensorIds,
+  replay,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
@@ -321,6 +353,9 @@ export function TrafficSimulation({
   showCounts?: boolean;
   /** если не пусто — показываются только машины/пешеходы, видимые ЭТИМ(и) датчиком(ами) */
   selectedSensorIds?: ReadonlySet<number>;
+  /** не пусто — сцена показывает записанный исторический кадр вместо живой симуляции
+   * (сама симуляция при этом продолжает идти в фоне не прерываясь — просто не рисуется) */
+  replay?: ReplayFrame | null;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const allSensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
@@ -342,6 +377,7 @@ export function TrafficSimulation({
     pedRight: HTMLDivElement | null;
   }>({ forward: null, backward: null, pedLeft: null, pedRight: null });
   const snapshotElapsed = useRef(0);
+  const sceneSnapshotElapsed = useRef(0);
 
   const carGroups = useRef<(THREE.Group | null)[]>([]);
   const carHalvesA = useRef<(THREE.Mesh | null)[]>([]);
@@ -358,28 +394,55 @@ export function TrafficSimulation({
     advanceCars(cars.current, vehicleSignal === "green", dt, geo);
     advancePeds(peds.current, pedestrianSignal === "walk", dt, geo, onPedestrianWaiting);
 
-    cars.current.forEach((slot, i) =>
-      applyDetection(
-        slot,
-        carGroups.current[i],
-        carHalvesA.current[i],
-        carHalvesB.current[i],
-        sensors,
-        crossing.its_devices,
-        "z",
-      ),
-    );
-    peds.current.forEach((slot, i) =>
-      applyDetection(
-        slot,
-        pedGroups.current[i],
-        pedHalvesA.current[i],
-        pedHalvesB.current[i],
-        sensors,
-        crossing.its_devices,
-        "x",
-      ),
-    );
+    // историческое воспроизведение подменяет ТОЛЬКО отрисовку — сама
+    // симуляция (cars.current/peds.current) продолжает идти в фоне, чтобы
+    // после закрытия истории продолжить без разрыва и чтобы снимки для
+    // будущего replay продолжали писаться
+    if (replay) {
+      carGroups.current.forEach((_, i) =>
+        applyReplaySlot(
+          replay.cars[i] ?? null,
+          carGroups.current[i],
+          carHalvesA.current[i],
+          carHalvesB.current[i],
+          "z",
+          REPLAY_CAR_COLOR,
+        ),
+      );
+      pedGroups.current.forEach((_, i) =>
+        applyReplaySlot(
+          replay.peds[i] ?? null,
+          pedGroups.current[i],
+          pedHalvesA.current[i],
+          pedHalvesB.current[i],
+          "x",
+          REPLAY_PED_COLOR,
+        ),
+      );
+    } else {
+      cars.current.forEach((slot, i) =>
+        applyDetection(
+          slot,
+          carGroups.current[i],
+          carHalvesA.current[i],
+          carHalvesB.current[i],
+          sensors,
+          crossing.its_devices,
+          "z",
+        ),
+      );
+      peds.current.forEach((slot, i) =>
+        applyDetection(
+          slot,
+          pedGroups.current[i],
+          pedHalvesA.current[i],
+          pedHalvesB.current[i],
+          sensors,
+          crossing.its_devices,
+          "x",
+        ),
+      );
+    }
 
     // считаем всегда (дёшево — просто проход по двум пулам), а не только
     // при showCounts: снимок для графиков интенсивности пишется независимо
@@ -408,6 +471,23 @@ export function TrafficSimulation({
           backward_count: backward,
           ped_left_count: pedLeft,
           ped_right_count: pedRight,
+        })
+        .catch(() => {});
+    }
+
+    // снимок ПОЗИЦИЙ — для покадрового replay в таймлайне; пишем всегда,
+    // из живого пула (не из replay), даже если сейчас сам показан replay
+    sceneSnapshotElapsed.current += dt;
+    if (sceneSnapshotElapsed.current >= SCENE_SNAPSHOT_INTERVAL_S) {
+      sceneSnapshotElapsed.current = 0;
+      const toSlot = (s: Slot): SceneSlot =>
+        s.active ? [Math.round(s.x * 100) / 100, Math.round(s.z * 100) / 100, s.dir] : null;
+      void api
+        .addSceneSnapshot(crossing.id, {
+          vehicle_signal: vehicleSignal,
+          pedestrian_signal: pedestrianSignal,
+          cars: cars.current.map(toSlot),
+          peds: peds.current.map(toSlot),
         })
         .catch(() => {});
     }

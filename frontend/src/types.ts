@@ -100,6 +100,23 @@ export type TrafficMetricSnapshotCreate = Pick<
   "forward_count" | "backward_count" | "ped_left_count" | "ped_right_count"
 >;
 
+/** [x, z, dir] активного слота пула машин/пешеходов на сцене, либо null — слот свободен */
+export type SceneSlot = [number, number, number] | null;
+
+export interface SceneSnapshot {
+  id: number;
+  at: string;
+  vehicle_signal: VehicleSignal;
+  pedestrian_signal: PedestrianSignal;
+  cars: SceneSlot[];
+  peds: SceneSlot[];
+}
+
+export type SceneSnapshotCreate = Pick<
+  SceneSnapshot,
+  "vehicle_signal" | "pedestrian_signal" | "cars" | "peds"
+>;
+
 export type CrossingPatch = Partial<
   Pick<
     Crossing,
