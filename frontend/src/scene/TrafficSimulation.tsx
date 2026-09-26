@@ -55,15 +55,21 @@ function trySpawnCars(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: n
   }
 }
 
+const PED_SPAWN_MARGIN = 1.0; // ближайший к бордюру край площадки ожидания
+const PED_SPAWN_DEPTH = 2.0; // насколько вглубь тротуара разбросан спавн
+const PED_SPAWN_HALF_WIDTH_EXTRA = 1.0; // площадка чуть шире самого перехода
+
 function trySpawnPeds(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: number) {
+  const halfWidth = geo.crossingWidth / 2 + PED_SPAWN_HALF_WIDTH_EXTRA;
   if (crossing.peds_left_vph > 0) {
     if (Math.random() < (crossing.peds_left_vph / 3600) * dt) {
       const slot = pool.find((s) => !s.active);
       if (slot) {
         slot.active = true;
         slot.dir = 1;
-        slot.x = geo.leftEdge - 1.4;
-        slot.z = (Math.random() - 0.5) * geo.crossingWidth * 0.6;
+        // площадка перед переходом, а не линия: разброс и вглубь тротуара, и вдоль дороги
+        slot.x = geo.leftEdge - PED_SPAWN_MARGIN - Math.random() * PED_SPAWN_DEPTH;
+        slot.z = (Math.random() - 0.5) * 2 * halfWidth;
       }
     }
   }
@@ -73,8 +79,8 @@ function trySpawnPeds(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: n
       if (slot) {
         slot.active = true;
         slot.dir = -1;
-        slot.x = geo.rightEdge + 1.4;
-        slot.z = (Math.random() - 0.5) * geo.crossingWidth * 0.6;
+        slot.x = geo.rightEdge + PED_SPAWN_MARGIN + Math.random() * PED_SPAWN_DEPTH;
+        slot.z = (Math.random() - 0.5) * 2 * halfWidth;
       }
     }
   }
@@ -125,8 +131,11 @@ function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeom
  */
 function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
   const walk = crossing.pedestrian_signal === "walk";
-  const rightBound = geo.rightEdge + 2;
-  const leftBound = geo.leftEdge - 2;
+  // граница despawn должна быть дальше самой глубокой точки площадки спавна,
+  // иначе пешеход, появившийся в глубине тротуара, исчезнет в тот же кадр
+  const spawnDepth = PED_SPAWN_MARGIN + PED_SPAWN_DEPTH;
+  const rightBound = geo.rightEdge + spawnDepth + 1;
+  const leftBound = geo.leftEdge - spawnDepth - 1;
   for (const s of pool) {
     if (!s.active) continue;
     const beforeRoad = s.dir > 0 ? s.x < geo.leftEdge : s.x > geo.rightEdge;
