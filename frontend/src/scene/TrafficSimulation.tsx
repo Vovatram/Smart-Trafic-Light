@@ -1,10 +1,35 @@
+import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 import { detectingColors, sensorDevices } from "./detection";
-import { laneCenterX, roadGeometry, type RoadGeometry } from "./layout";
+import { laneCenterX, roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
+
+const COUNT_BADGE_Y = 2.2;
+
+/** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
+function CountBadge({
+  x,
+  z,
+  refCb,
+}: {
+  x: number;
+  z: number;
+  refCb: (el: HTMLDivElement | null) => void;
+}) {
+  return (
+    <Html position={[x, COUNT_BADGE_Y, z]} center>
+      <div
+        ref={refCb}
+        className="rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-100 shadow-lg"
+      >
+        0
+      </div>
+    </Html>
+  );
+}
 
 const CAR_SPEED = 8; // м/с
 const PED_SPEED = 2.6; // м/с — заметно быстрый шаг для наглядности сцены
@@ -281,6 +306,7 @@ export function TrafficSimulation({
   vehicleSignal,
   pedestrianSignal,
   onPedestrianWaiting,
+  showCounts,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
@@ -288,12 +314,21 @@ export function TrafficSimulation({
   pedestrianSignal: PedestrianSignal;
   /** пешеход подошёл к переходу и ждёт — в режиме "Кнопка" это авто-нажатие вызова */
   onPedestrianWaiting?: () => void;
+  /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
+  showCounts?: boolean;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const sensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
+  const stopZ = geo.crossingHalf + geo.stopOffset;
 
   const cars = useRef<Slot[]>(makePool(CAR_POOL));
   const peds = useRef<Slot[]>(makePool(PED_POOL));
+  const countRefs = useRef<{
+    forward: HTMLDivElement | null;
+    backward: HTMLDivElement | null;
+    pedLeft: HTMLDivElement | null;
+    pedRight: HTMLDivElement | null;
+  }>({ forward: null, backward: null, pedLeft: null, pedRight: null });
 
   const carGroups = useRef<(THREE.Group | null)[]>([]);
   const carHalvesA = useRef<(THREE.Mesh | null)[]>([]);
@@ -332,6 +367,20 @@ export function TrafficSimulation({
         "x",
       ),
     );
+
+    if (showCounts) {
+      let forward = 0;
+      let backward = 0;
+      let pedLeft = 0;
+      let pedRight = 0;
+      for (const s of cars.current) if (s.active) (s.dir > 0 ? forward++ : backward++);
+      for (const s of peds.current) if (s.active) (s.dir > 0 ? pedLeft++ : pedRight++);
+      // textContent напрямую, без React state — четыре бейджа не стоят лишнего ре-рендера
+      if (countRefs.current.forward) countRefs.current.forward.textContent = String(forward);
+      if (countRefs.current.backward) countRefs.current.backward.textContent = String(backward);
+      if (countRefs.current.pedLeft) countRefs.current.pedLeft.textContent = String(pedLeft);
+      if (countRefs.current.pedRight) countRefs.current.pedRight.textContent = String(pedRight);
+    }
   });
 
   return (
@@ -360,6 +409,34 @@ export function TrafficSimulation({
           />
         </group>
       ))}
+      {showCounts && (
+        <>
+          {geo.lanesForward > 0 && (
+            <CountBadge
+              x={geo.leftEdge / 2}
+              z={-stopZ / 2}
+              refCb={(el) => (countRefs.current.forward = el)}
+            />
+          )}
+          {geo.lanesBackward > 0 && (
+            <CountBadge
+              x={geo.rightEdge / 2}
+              z={stopZ / 2}
+              refCb={(el) => (countRefs.current.backward = el)}
+            />
+          )}
+          <CountBadge
+            x={sidewalkX(geo, "left")}
+            z={0}
+            refCb={(el) => (countRefs.current.pedLeft = el)}
+          />
+          <CountBadge
+            x={sidewalkX(geo, "right")}
+            z={0}
+            refCb={(el) => (countRefs.current.pedRight = el)}
+          />
+        </>
+      )}
     </group>
   );
 }

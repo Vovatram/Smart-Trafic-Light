@@ -27,9 +27,8 @@ export function InfoPanel({
   onStopPlacing,
   selectedDeviceIds,
   onSelectDevice,
-  generationMode,
-  onStartGeneration,
-  onStopGeneration,
+  generationOpen,
+  onGenerationOpenChange,
 }: {
   crossings: CrossingBrief[];
   selectedId: number | null;
@@ -44,10 +43,9 @@ export function InfoPanel({
   onStartPlacing: (type: DeviceType) => void;
   onStopPlacing: () => void;
   selectedDeviceIds: ReadonlySet<number>;
-  onSelectDevice: (id: number, additive: boolean) => void;
-  generationMode: boolean;
-  onStartGeneration: () => void;
-  onStopGeneration: () => void;
+  onSelectDevice: (id: number) => void;
+  generationOpen: boolean;
+  onGenerationOpenChange: (open: boolean) => void;
 }) {
   const [newDeviceType, setNewDeviceType] = useState<DeviceType>("camera");
 
@@ -133,7 +131,7 @@ export function InfoPanel({
                   active={selectedDeviceIds.has(device.id)}
                   disabled={busy}
                   className="w-full text-left"
-                  onClick={(event) => onSelectDevice(device.id, event.ctrlKey || event.metaKey)}
+                  onClick={() => onSelectDevice(device.id)}
                 >
                   {DEVICE_LABEL[device.device_type]} №{device.id}
                 </Button>
@@ -144,15 +142,8 @@ export function InfoPanel({
       )}
 
       {crossing && (
-        <Card title="Генерация" defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
-            <Button active={!generationMode} onClick={onStopGeneration}>
-              Реальный режим
-            </Button>
-            <Button active={generationMode} disabled={busy} onClick={onStartGeneration}>
-              Генерация
-            </Button>
-          </div>
+        <Card title="Генерация" open={generationOpen} onOpenChange={onGenerationOpenChange}>
+          <></>
         </Card>
       )}
     </>

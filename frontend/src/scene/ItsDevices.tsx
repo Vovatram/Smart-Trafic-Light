@@ -100,12 +100,12 @@ function PoleDevice({
   color: string;
   selectable: boolean;
   showWedge: boolean;
-  onSelect: (id: number, additive: boolean) => void;
+  onSelect: (id: number) => void;
 }) {
   const height = device.height ?? 5;
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    if (selectable) onSelect(device.id, event.ctrlKey || event.metaKey);
+    if (selectable) onSelect(device.id);
   };
 
   return (
@@ -139,12 +139,12 @@ function LoopDevice({
   device: ItsDevice;
   color: string;
   selectable: boolean;
-  onSelect: (id: number, additive: boolean) => void;
+  onSelect: (id: number) => void;
 }) {
   const size = device.loop_length ?? 2;
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    if (selectable) onSelect(device.id, event.ctrlKey || event.metaKey);
+    if (selectable) onSelect(device.id);
   };
 
   return (
@@ -192,7 +192,7 @@ export function ItsDevices({
   selectable: boolean;
   /** выбранные объекты — сектор обзора виден у каждого из них (одного или нескольких) */
   selectedIds: ReadonlySet<number>;
-  onSelect: (id: number, additive: boolean) => void;
+  onSelect: (id: number) => void;
 }) {
   return (
     <group>

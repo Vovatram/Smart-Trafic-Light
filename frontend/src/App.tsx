@@ -24,7 +24,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [placingType, setPlacingType] = useState<DeviceType | null>(null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<ReadonlySet<number>>(new Set());
-  const [generationMode, setGenerationMode] = useState(false);
+  const [generationPanelOpen, setGenerationPanelOpen] = useState(false);
   const [signalPanelOpen, setSignalPanelOpen] = useState(true);
 
   const { live, requestCall } = useSignalState(crossing);
@@ -82,18 +82,21 @@ export default function App() {
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
     setSelectedDeviceIds(new Set());
-    setGenerationMode(false);
+    setGenerationPanelOpen(false);
     setView("top");
   }, []);
   const onStopPlacing = useCallback(() => setPlacingType(null), []);
 
-  const onStartGeneration = useCallback(() => {
-    setGenerationMode(true);
-    setPlacingType(null);
-    setSelectedDeviceIds(new Set());
-    setView("top");
+  // видимость плашек интенсивности на сцене напрямую следует за открытостью
+  // панели "Генерация" — свернул панель, плашки пропали, отдельного тумблера нет
+  const onGenerationOpenChange = useCallback((open: boolean) => {
+    setGenerationPanelOpen(open);
+    if (open) {
+      setPlacingType(null);
+      setSelectedDeviceIds(new Set());
+      setView("top");
+    }
   }, []);
-  const onStopGeneration = useCallback(() => setGenerationMode(false), []);
 
   const onPlace = useCallback(
     (x: number, z: number) => {
@@ -110,9 +113,10 @@ export default function App() {
     [crossing, placingType, run],
   );
 
-  const onSelectDevice = useCallback((id: number, additive: boolean) => {
+  // клик по объекту всегда добавляет/убирает его из выбора — без Ctrl/Cmd;
+  // чтобы оставить только один, сначала кликните по пустому месту сцены
+  const onSelectDevice = useCallback((id: number) => {
     setSelectedDeviceIds((prev) => {
-      if (!additive) return new Set([id]);
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -226,8 +230,10 @@ export default function App() {
       ? (crossing?.its_devices.find((d) => selectedDeviceIds.has(d.id)) ?? null)
       : null;
 
+  // бейдж скрыт и в ручном режиме (нет расписания), и когда сама панель
+  // "Режим светофора" свёрнута — доп. параметры видны, только пока она открыта
   const formatBadge = (value: string): string => {
-    if (!crossing || crossing.signal_mode === "manual" || !value) return "";
+    if (!crossing || crossing.signal_mode === "manual" || !signalPanelOpen || !value) return "";
     return value === "АУ" ? "АУ" : `${value} с`;
   };
   const vehicleStatusLabel = formatBadge(live.vehicleLabel);
@@ -243,7 +249,7 @@ export default function App() {
         selectedDeviceIds={selectedDeviceIds}
         onSelectDevice={onSelectDevice}
         onClearSelection={onClearSelection}
-        generationMode={generationMode}
+        generationMode={generationPanelOpen}
         onChangeCrossing={patch}
         vehicleSignal={live.vehicle}
         pedestrianSignal={live.pedestrian}
@@ -252,6 +258,7 @@ export default function App() {
         onClickVehicleLight={onClickVehicleLight}
         onClickPedestrianLight={onClickPedestrianLight}
         onPedestrianWaiting={requestCall}
+        showTrafficCounts={signalPanelOpen}
       />
 
       <header className="pointer-events-none absolute top-4 left-4 z-10">
@@ -318,9 +325,8 @@ export default function App() {
           onStopPlacing={onStopPlacing}
           selectedDeviceIds={selectedDeviceIds}
           onSelectDevice={onSelectDevice}
-          generationMode={generationMode}
-          onStartGeneration={onStartGeneration}
-          onStopGeneration={onStopGeneration}
+          generationOpen={generationPanelOpen}
+          onGenerationOpenChange={onGenerationOpenChange}
         />
       </aside>
 

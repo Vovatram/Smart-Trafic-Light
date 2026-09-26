@@ -84,6 +84,7 @@ export function SceneView({
   onClickVehicleLight,
   onClickPedestrianLight,
   onPedestrianWaiting,
+  showTrafficCounts,
 }: {
   crossing: Crossing | null;
   view: ViewName;
@@ -91,7 +92,7 @@ export function SceneView({
   onPlace?: (x: number, z: number) => void;
   /** id выбранных ИТС-объектов — у каждого из них виден сектор обзора */
   selectedDeviceIds: ReadonlySet<number>;
-  onSelectDevice?: (id: number, additive: boolean) => void;
+  onSelectDevice?: (id: number) => void;
   /** клик по пустому месту сцены (вне режима установки) — сбросить выбор объектов */
   onClearSelection?: () => void;
   generationMode?: boolean;
@@ -104,6 +105,8 @@ export function SceneView({
   onClickVehicleLight?: () => void;
   onClickPedestrianLight?: () => void;
   onPedestrianWaiting?: () => void;
+  /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
+  showTrafficCounts?: boolean;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
@@ -195,6 +198,7 @@ export function SceneView({
             vehicleSignal={vehicleSignal}
             pedestrianSignal={pedestrianSignal}
             onPedestrianWaiting={onPedestrianWaiting}
+            showCounts={showTrafficCounts}
           />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />
