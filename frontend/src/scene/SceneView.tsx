@@ -14,7 +14,7 @@ import type { ReplayFrame } from "./replay";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 import { SignalStatusBadge } from "./SignalStatusBadge";
-import { TrafficSimulation } from "./TrafficSimulation";
+import { TrafficSimulation, type PedCountRefs } from "./TrafficSimulation";
 
 export type ViewName = "perspective" | "top" | "along" | "side";
 
@@ -113,6 +113,7 @@ export function SceneView({
   replay?: ReplayFrame | null;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
+  const pedCounts = useRef<PedCountRefs>({ pedLeft: null, pedRight: null });
   const roadLength = crossing?.road_length ?? 40;
   // useMemo — принципиально: без него target ниже была бы новым массивом на
   // каждый ре-рендер SceneView (а он перерисовывается от любой мелочи —
@@ -186,14 +187,17 @@ export function SceneView({
             onClickPedestrian={onClickPedestrianLight}
           />
           {/* во время replay бейджи-обратный отсчёт скрыты — они считаются от
-              ЖИВОГО состояния и не соответствуют показанному историческому кадру */}
-          {!replay && (
+              ЖИВОГО состояния и не соответствуют показанному историческому кадру;
+              в режиме генерации скрыты тоже — там на сцене остаются только
+              бейджи интенсивности (GenerationBadges), всё остальное не мешает */}
+          {!replay && !generationMode && (
             <SignalStatusBadge
               crossing={crossing}
               vehicleLabel={vehicleStatusLabel}
               pedestrianLabel={pedestrianStatusLabel}
               vehicleSignal={vehicleSignal}
               pedestrianSignal={pedestrianSignal}
+              pedCountRef={pedCounts}
             />
           )}
           <ItsDevices
@@ -208,9 +212,10 @@ export function SceneView({
             vehicleSignal={vehicleSignal}
             pedestrianSignal={pedestrianSignal}
             onPedestrianWaiting={onPedestrianWaiting}
-            showCounts={showTrafficCounts}
+            showCounts={!generationMode && showTrafficCounts}
             selectedSensorIds={selectedDeviceIds}
             replay={replay}
+            pedCountRef={pedCounts}
           />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />

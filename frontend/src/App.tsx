@@ -322,6 +322,7 @@ export default function App() {
           onLanesBackward={onLanesBackward}
           onRoadLengthChange={onRoadLengthChange}
           onLogRetentionChange={onLogRetentionChange}
+          onPatch={patch}
           busy={busy}
           view={view}
           onView={setView}

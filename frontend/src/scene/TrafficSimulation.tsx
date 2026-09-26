@@ -3,19 +3,36 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import type { RefObject } from "react";
+
 import { api } from "../api/client";
 import type { Crossing, PedestrianSignal, SceneSlot, SceneSnapshot, VehicleSignal } from "../types";
 import { detectingColors, sensorDevices } from "./detection";
-import { laneCenterX, roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
+import {
+  busLaneIndex,
+  carLaneIndices,
+  laneCenterX,
+  roadGeometry,
+  sidewalkX,
+  tramLaneIndex,
+  type RoadGeometry,
+} from "./layout";
 import type { ReplayFrame } from "./replay";
 
 const COUNT_BADGE_Y = 2.2;
 const SNAPSHOT_INTERVAL_S = 30; // как часто писать снимок интенсивности для графиков
 const SCENE_SNAPSHOT_INTERVAL_S = 2; // как часто писать снимок ПОЗИЦИЙ для покадрового replay
 // цвет агентов при историческом воспроизведении — детекция сенсоров в
-// снимке не записана (только позиции), поэтому раскраска здесь фиксированная
-const REPLAY_CAR_COLOR = "#94a3b8";
+// снимке не записана (только позиции), поэтому раскраска здесь фиксированная;
+// трамваи/автобусы/спецтехника в снимки пока не попадают (см. README) —
+// раскраска ниже нужна только машинам и пешеходам
+const REPLAY_VEHICLE_COLOR = "#94a3b8";
 const REPLAY_PED_COLOR = "#38bdf8";
+
+export interface PedCountRefs {
+  pedLeft: HTMLDivElement | null;
+  pedRight: HTMLDivElement | null;
+}
 
 /** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
 function CountBadge({
@@ -52,6 +69,26 @@ const PED_MIN_GAP = 1.0; // м — то же самое для пешеходо�
 const LANE_EPS = 0.5; // допуск, чтобы считать двух агентов "в одной полосе"
 const HIDDEN_COLOR = "#334155"; // цвет "по умолчанию" — виден только пока идёт transition, реально не рендерится
 
+// трамвай/автобус едут по своей выделенной полосе (если она включена),
+// спецтехника — по обычным полосам вместе с машинами
+const TRAM_POOL = 4;
+const TRAM_SPEED = 7;
+const TRAM_LENGTH = 16;
+const TRAM_WIDTH = 2.4;
+const TRAM_MIN_GAP = 10;
+
+const BUS_POOL = 6;
+const BUS_SPEED = 8;
+const BUS_LENGTH = 11;
+const BUS_WIDTH = 2.5;
+const BUS_MIN_GAP = 8;
+
+const SPECIAL_POOL = 6;
+const SPECIAL_SPEED = 11;
+const SPECIAL_LENGTH = 5.2;
+const SPECIAL_WIDTH = 2.0;
+const SPECIAL_MIN_GAP = 7;
+
 /** Слот пула: переиспользуемое состояние одного агента (машины или пешехода). */
 interface Slot {
   active: boolean;
@@ -65,12 +102,25 @@ function makePool(n: number): Slot[] {
   return Array.from({ length: n }, () => ({ active: false, x: 0, z: 0, dir: 1 }));
 }
 
-function trySpawnCars(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: number) {
-  if (geo.lanesForward > 0 && crossing.vph_forward > 0) {
-    if (Math.random() < (crossing.vph_forward / 3600) * dt) {
+/**
+ * Общий спавн для машин/трамваев/автобусов/спецтехники — отличаются только
+ * тем, В КАКИХ полосах им можно появиться (обычные машины и спецтехника —
+ * во всех "автомобильных", трамвай/автобус — строго в своей выделенной).
+ */
+function trySpawnInLanes(
+  pool: Slot[],
+  geo: RoadGeometry,
+  forwardLanes: number[],
+  backwardLanes: number[],
+  vphForward: number,
+  vphBackward: number,
+  dt: number,
+) {
+  if (forwardLanes.length > 0 && vphForward > 0) {
+    if (Math.random() < (vphForward / 3600) * dt) {
       const slot = pool.find((s) => !s.active);
       if (slot) {
-        const lane = Math.floor(Math.random() * geo.lanesForward);
+        const lane = forwardLanes[Math.floor(Math.random() * forwardLanes.length)];
         slot.active = true;
         slot.dir = 1;
         slot.x = laneCenterX(geo, "forward", lane);
@@ -78,11 +128,11 @@ function trySpawnCars(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: n
       }
     }
   }
-  if (geo.lanesBackward > 0 && crossing.vph_backward > 0) {
-    if (Math.random() < (crossing.vph_backward / 3600) * dt) {
+  if (backwardLanes.length > 0 && vphBackward > 0) {
+    if (Math.random() < (vphBackward / 3600) * dt) {
       const slot = pool.find((s) => !s.active);
       if (slot) {
-        const lane = Math.floor(Math.random() * geo.lanesBackward);
+        const lane = backwardLanes[Math.floor(Math.random() * backwardLanes.length)];
         slot.active = true;
         slot.dir = -1;
         slot.x = laneCenterX(geo, "backward", lane);
@@ -178,17 +228,27 @@ function advanceWithGate(
 }
 
 /**
- * Машины продолжают появляться и ехать даже на красный — просто тормозят
- * перед стоп-линией (crossingHalf + stopOffset от центра) и ждут зелёного.
- * Та, что уже проехала эту границу, доезжает переход не останавливаясь.
+ * Машины/трамваи/автобусы/спецтехника продолжают появляться и ехать даже на
+ * красный — просто тормозят перед стоп-линией (crossingHalf + stopOffset от
+ * центра) и ждут зелёного. Кто уже проехал эту границу, доезжает переход не
+ * останавливаясь.
  *
  * gate считается по координате ПЕРЕДНЕГО бампера, а не центра машины —
- * иначе центр стоит перед линией, а капот (половина CAR_LENGTH) торчит
- * почти до середины перехода. Добавляем половину длины кузова к отступу.
+ * иначе центр стоит перед линией, а капот (половина длины) торчит почти до
+ * середины перехода. Добавляем половину длины кузова к отступу — своей для
+ * каждого типа техники (трамвай/автобус длиннее обычной машины).
  */
-function advanceCars(pool: Slot[], green: boolean, dt: number, geo: RoadGeometry) {
-  const stopZ = geo.crossingHalf + geo.stopOffset + CAR_LENGTH / 2;
-  advanceWithGate(pool, dt, "z", CAR_SPEED, CAR_MIN_GAP, green, stopZ, {
+function advanceVehicles(
+  pool: Slot[],
+  length: number,
+  speed: number,
+  minGap: number,
+  green: boolean,
+  dt: number,
+  geo: RoadGeometry,
+) {
+  const stopZ = geo.crossingHalf + geo.stopOffset + length / 2;
+  advanceWithGate(pool, dt, "z", speed, minGap, green, stopZ, {
     min: -geo.roadLength,
     max: geo.roadLength,
   });
@@ -342,6 +402,7 @@ export function TrafficSimulation({
   showCounts,
   selectedSensorIds,
   replay,
+  pedCountRef,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
@@ -356,6 +417,9 @@ export function TrafficSimulation({
   /** не пусто — сцена показывает записанный исторический кадр вместо живой симуляции
    * (сама симуляция при этом продолжает идти в фоне не прерываясь — просто не рисуется) */
   replay?: ReplayFrame | null;
+  /** сюда пишутся живые счётчики пешеходов слева/справа — их читает бейдж
+   * "Пешеходный" на светофоре (третья строка, под секундами), см. SignalStatusBadge */
+  pedCountRef?: RefObject<PedCountRefs>;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const allSensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
@@ -370,6 +434,9 @@ export function TrafficSimulation({
 
   const cars = useRef<Slot[]>(makePool(CAR_POOL));
   const peds = useRef<Slot[]>(makePool(PED_POOL));
+  const trams = useRef<Slot[]>(makePool(TRAM_POOL));
+  const buses = useRef<Slot[]>(makePool(BUS_POOL));
+  const specials = useRef<Slot[]>(makePool(SPECIAL_POOL));
   const countRefs = useRef<{
     forward: HTMLDivElement | null;
     backward: HTMLDivElement | null;
@@ -385,19 +452,64 @@ export function TrafficSimulation({
   const pedGroups = useRef<(THREE.Group | null)[]>([]);
   const pedHalvesA = useRef<(THREE.Mesh | null)[]>([]);
   const pedHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const tramGroups = useRef<(THREE.Group | null)[]>([]);
+  const tramHalvesA = useRef<(THREE.Mesh | null)[]>([]);
+  const tramHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const busGroups = useRef<(THREE.Group | null)[]>([]);
+  const busHalvesA = useRef<(THREE.Mesh | null)[]>([]);
+  const busHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const specialGroups = useRef<(THREE.Group | null)[]>([]);
+  const specialHalvesA = useRef<(THREE.Mesh | null)[]>([]);
+  const specialHalvesB = useRef<(THREE.Mesh | null)[]>([]);
 
   useFrame((_, rawDelta) => {
     const dt = Math.min(rawDelta, 0.1);
+    const carLanesFwd = carLaneIndices(geo, "forward");
+    const carLanesBack = carLaneIndices(geo, "backward");
 
-    trySpawnCars(cars.current, geo, crossing, dt);
+    trySpawnInLanes(cars.current, geo, carLanesFwd, carLanesBack, crossing.vph_forward, crossing.vph_backward, dt);
+    trySpawnInLanes(
+      specials.current,
+      geo,
+      carLanesFwd,
+      carLanesBack,
+      crossing.special_vph_forward,
+      crossing.special_vph_backward,
+      dt,
+    );
+    trySpawnInLanes(
+      trams.current,
+      geo,
+      geo.hasTramForward ? [tramLaneIndex()] : [],
+      geo.hasTramBackward ? [tramLaneIndex()] : [],
+      crossing.tram_vph_forward,
+      crossing.tram_vph_backward,
+      dt,
+    );
+    trySpawnInLanes(
+      buses.current,
+      geo,
+      geo.hasBusForward ? [busLaneIndex(geo, "forward")] : [],
+      geo.hasBusBackward ? [busLaneIndex(geo, "backward")] : [],
+      crossing.bus_vph_forward,
+      crossing.bus_vph_backward,
+      dt,
+    );
     trySpawnPeds(peds.current, geo, crossing, dt);
-    advanceCars(cars.current, vehicleSignal === "green", dt, geo);
+
+    const green = vehicleSignal === "green";
+    advanceVehicles(cars.current, CAR_LENGTH, CAR_SPEED, CAR_MIN_GAP, green, dt, geo);
+    advanceVehicles(specials.current, SPECIAL_LENGTH, SPECIAL_SPEED, SPECIAL_MIN_GAP, green, dt, geo);
+    advanceVehicles(trams.current, TRAM_LENGTH, TRAM_SPEED, TRAM_MIN_GAP, green, dt, geo);
+    advanceVehicles(buses.current, BUS_LENGTH, BUS_SPEED, BUS_MIN_GAP, green, dt, geo);
     advancePeds(peds.current, pedestrianSignal === "walk", dt, geo, onPedestrianWaiting);
 
     // историческое воспроизведение подменяет ТОЛЬКО отрисовку — сама
-    // симуляция (cars.current/peds.current) продолжает идти в фоне, чтобы
-    // после закрытия истории продолжить без разрыва и чтобы снимки для
-    // будущего replay продолжали писаться
+    // симуляция (cars.current/peds.current/... ) продолжает идти в фоне,
+    // чтобы после закрытия истории продолжить без разрыва и чтобы снимки
+    // для будущего replay продолжали писаться. Трамваи/автобусы/спецтехника
+    // в снимки пока не попадают — на время replay они просто скрыты, а не
+    // показывают неверную "текущую" позицию.
     if (replay) {
       carGroups.current.forEach((_, i) =>
         applyReplaySlot(
@@ -406,7 +518,7 @@ export function TrafficSimulation({
           carHalvesA.current[i],
           carHalvesB.current[i],
           "z",
-          REPLAY_CAR_COLOR,
+          REPLAY_VEHICLE_COLOR,
         ),
       );
       pedGroups.current.forEach((_, i) =>
@@ -419,6 +531,9 @@ export function TrafficSimulation({
           REPLAY_PED_COLOR,
         ),
       );
+      for (const g of tramGroups.current) if (g) g.visible = false;
+      for (const g of busGroups.current) if (g) g.visible = false;
+      for (const g of specialGroups.current) if (g) g.visible = false;
     } else {
       cars.current.forEach((slot, i) =>
         applyDetection(
@@ -442,6 +557,23 @@ export function TrafficSimulation({
           "x",
         ),
       );
+      trams.current.forEach((slot, i) =>
+        applyDetection(slot, tramGroups.current[i], tramHalvesA.current[i], tramHalvesB.current[i], sensors, crossing.its_devices, "z"),
+      );
+      buses.current.forEach((slot, i) =>
+        applyDetection(slot, busGroups.current[i], busHalvesA.current[i], busHalvesB.current[i], sensors, crossing.its_devices, "z"),
+      );
+      specials.current.forEach((slot, i) =>
+        applyDetection(
+          slot,
+          specialGroups.current[i],
+          specialHalvesA.current[i],
+          specialHalvesB.current[i],
+          sensors,
+          crossing.its_devices,
+          "z",
+        ),
+      );
     }
 
     // считаем всегда (дёшево — просто проход по двум пулам), а не только
@@ -460,6 +592,12 @@ export function TrafficSimulation({
       if (countRefs.current.backward) countRefs.current.backward.textContent = String(backward);
       if (countRefs.current.pedLeft) countRefs.current.pedLeft.textContent = String(pedLeft);
       if (countRefs.current.pedRight) countRefs.current.pedRight.textContent = String(pedRight);
+    }
+    // отдельно от showCounts — эту пару читает бейдж "Пешеходный" на самом
+    // светофоре (третья строка под секундами), у него своя логика видимости
+    if (pedCountRef?.current) {
+      if (pedCountRef.current.pedLeft) pedCountRef.current.pedLeft.textContent = `${pedLeft} чел`;
+      if (pedCountRef.current.pedRight) pedCountRef.current.pedRight.textContent = `${pedRight} чел`;
     }
 
     snapshotElapsed.current += dt;
@@ -516,6 +654,42 @@ export function TrafficSimulation({
             y={0.8}
             refA={(el) => (pedHalvesA.current[i] = el)}
             refB={(el) => (pedHalvesB.current[i] = el)}
+          />
+        </group>
+      ))}
+      {Array.from({ length: TRAM_POOL }).map((_, i) => (
+        <group key={`tram-${i}`} ref={(el) => (tramGroups.current[i] = el)} visible={false}>
+          <TwoTonePod
+            width={TRAM_WIDTH}
+            height={2.4}
+            depth={TRAM_LENGTH}
+            y={1.2}
+            refA={(el) => (tramHalvesA.current[i] = el)}
+            refB={(el) => (tramHalvesB.current[i] = el)}
+          />
+        </group>
+      ))}
+      {Array.from({ length: BUS_POOL }).map((_, i) => (
+        <group key={`bus-${i}`} ref={(el) => (busGroups.current[i] = el)} visible={false}>
+          <TwoTonePod
+            width={BUS_WIDTH}
+            height={2.2}
+            depth={BUS_LENGTH}
+            y={1.1}
+            refA={(el) => (busHalvesA.current[i] = el)}
+            refB={(el) => (busHalvesB.current[i] = el)}
+          />
+        </group>
+      ))}
+      {Array.from({ length: SPECIAL_POOL }).map((_, i) => (
+        <group key={`special-${i}`} ref={(el) => (specialGroups.current[i] = el)} visible={false}>
+          <TwoTonePod
+            width={SPECIAL_WIDTH}
+            height={1.4}
+            depth={SPECIAL_LENGTH}
+            y={0.7}
+            refA={(el) => (specialHalvesA.current[i] = el)}
+            refB={(el) => (specialHalvesB.current[i] = el)}
           />
         </group>
       ))}

@@ -2,8 +2,8 @@ import { useState } from "react";
 
 import type { ViewName } from "../scene/SceneView";
 import { VIEW_LABEL, VIEW_ORDER } from "../scene/SceneView";
-import type { Crossing, CrossingBrief, DeviceType } from "../types";
-import { Button, Card, Select, Stepper } from "./ui";
+import type { Crossing, CrossingBrief, CrossingPatch, DeviceType, StopPosition } from "../types";
+import { Button, Card, Checkbox, Select, Stepper } from "./ui";
 
 const DEVICE_LABEL: Record<DeviceType, string> = {
   camera: "Камера",
@@ -11,6 +11,65 @@ const DEVICE_LABEL: Record<DeviceType, string> = {
   loop: "Индукционная петля",
 };
 const DEVICE_ORDER: DeviceType[] = ["camera", "microwave", "loop"];
+
+/**
+ * Трамвай/автобус ЗАМЕНЯЮТ существующую полосу направления (трамвай —
+ * самую левую, автобус — самую правую), велополоса, наоборот, добавляет
+ * ширину сбоку — см. frontend/scene/layout.ts. Остановка — только
+ * визуальный маркер платформы, без имитации посадки/высадки.
+ */
+function TransitColumn({
+  label,
+  disabled,
+  hasTram,
+  hasBus,
+  hasBike,
+  tramStop,
+  busStop,
+  onSetTram,
+  onSetBus,
+  onSetBike,
+  onSetTramStop,
+  onSetBusStop,
+}: {
+  label: string;
+  disabled: boolean;
+  hasTram: boolean;
+  hasBus: boolean;
+  hasBike: boolean;
+  tramStop: StopPosition;
+  busStop: StopPosition;
+  onSetTram: (value: boolean) => void;
+  onSetBus: (value: boolean) => void;
+  onSetBike: (value: boolean) => void;
+  onSetTramStop: (value: StopPosition) => void;
+  onSetBusStop: (value: StopPosition) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <span className="block text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+        {label}
+      </span>
+      <Checkbox label="Трамвайные пути" checked={hasTram} disabled={disabled} onChange={onSetTram} />
+      {hasTram && (
+        <Select value={tramStop} onChange={(value) => onSetTramStop(value as StopPosition)}>
+          <option value="none">Без остановки</option>
+          <option value="before">Остановка до перехода</option>
+          <option value="after">Остановка после перехода</option>
+        </Select>
+      )}
+      <Checkbox label="Автобусная полоса" checked={hasBus} disabled={disabled} onChange={onSetBus} />
+      {hasBus && (
+        <Select value={busStop} onChange={(value) => onSetBusStop(value as StopPosition)}>
+          <option value="none">Без остановки</option>
+          <option value="before">Остановка до перехода</option>
+          <option value="after">Остановка после перехода</option>
+        </Select>
+      )}
+      <Checkbox label="Велополоса" checked={hasBike} disabled={disabled} onChange={onSetBike} />
+    </div>
+  );
+}
 
 export function InfoPanel({
   crossings,
@@ -21,6 +80,7 @@ export function InfoPanel({
   onLanesBackward,
   onRoadLengthChange,
   onLogRetentionChange,
+  onPatch,
   busy,
   view,
   onView,
@@ -41,6 +101,7 @@ export function InfoPanel({
   onLanesBackward: (value: number) => void;
   onRoadLengthChange: (value: number) => void;
   onLogRetentionChange: (value: number) => void;
+  onPatch: (patch: CrossingPatch) => void;
   busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
@@ -112,6 +173,49 @@ export function InfoPanel({
           </div>
         )}
       </Card>
+
+      {crossing && (
+        <Card title="Трамвай, автобус, вело" defaultOpen={false}>
+          <div className="grid grid-cols-2 gap-3">
+            <TransitColumn
+              label="Вперёд (N)"
+              disabled={busy || crossing.lanes_forward < 1}
+              hasTram={crossing.has_tram_forward}
+              hasBus={crossing.has_bus_forward}
+              hasBike={crossing.has_bike_forward}
+              tramStop={crossing.tram_stop_forward}
+              busStop={crossing.bus_stop_forward}
+              onSetTram={(value) =>
+                onPatch({ has_tram_forward: value, ...(value ? {} : { tram_stop_forward: "none" }) })
+              }
+              onSetBus={(value) =>
+                onPatch({ has_bus_forward: value, ...(value ? {} : { bus_stop_forward: "none" }) })
+              }
+              onSetBike={(value) => onPatch({ has_bike_forward: value })}
+              onSetTramStop={(value) => onPatch({ tram_stop_forward: value })}
+              onSetBusStop={(value) => onPatch({ bus_stop_forward: value })}
+            />
+            <TransitColumn
+              label="Назад (K)"
+              disabled={busy || crossing.lanes_backward < 1}
+              hasTram={crossing.has_tram_backward}
+              hasBus={crossing.has_bus_backward}
+              hasBike={crossing.has_bike_backward}
+              tramStop={crossing.tram_stop_backward}
+              busStop={crossing.bus_stop_backward}
+              onSetTram={(value) =>
+                onPatch({ has_tram_backward: value, ...(value ? {} : { tram_stop_backward: "none" }) })
+              }
+              onSetBus={(value) =>
+                onPatch({ has_bus_backward: value, ...(value ? {} : { bus_stop_backward: "none" }) })
+              }
+              onSetBike={(value) => onPatch({ has_bike_backward: value })}
+              onSetTramStop={(value) => onPatch({ tram_stop_backward: value })}
+              onSetBusStop={(value) => onPatch({ bus_stop_backward: value })}
+            />
+          </div>
+        </Card>
+      )}
 
       <Card title="Вид сцены" defaultOpen={false}>
         <div className="grid grid-cols-2 gap-2">

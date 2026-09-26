@@ -1,5 +1,6 @@
 import { Html } from "@react-three/drei";
 import { useMemo } from "react";
+import type { RefObject } from "react";
 
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 import { poles, roadGeometry } from "./layout";
@@ -9,6 +10,7 @@ import {
   VEHICLE_COLOR,
   VEHICLE_HEAD_Y,
 } from "./SignalMasts";
+import type { PedCountRefs } from "./TrafficSimulation";
 
 // ниже, чем раньше (было +1.1) — на этой высоте бейдж надёжнее попадает в
 // кадр во всех пресетах камеры; всё равно выше самой автомобильной головы (4.3)
@@ -23,6 +25,7 @@ function Badge({
   title,
   value,
   color,
+  countRef,
 }: {
   x: number;
   y: number;
@@ -30,6 +33,8 @@ function Badge({
   title: string;
   value: string;
   color: string;
+  /** третья строка под секундами — сколько пешеходов сейчас на этой стороне; пишется через ref, не React state */
+  countRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
     <Html position={[x, y, z]} center zIndexRange={[100, 0]}>
@@ -41,6 +46,7 @@ function Badge({
         <div className="text-sm font-bold tabular-nums" style={{ color }}>
           {value}
         </div>
+        {countRef && <div ref={countRef} className="text-[10px] tabular-nums text-slate-400" />}
       </div>
     </Html>
   );
@@ -60,12 +66,15 @@ export function SignalStatusBadge({
   pedestrianLabel,
   vehicleSignal,
   pedestrianSignal,
+  pedCountRef,
 }: {
   crossing: Crossing;
   vehicleLabel: string;
   pedestrianLabel: string;
   vehicleSignal: VehicleSignal;
   pedestrianSignal: PedestrianSignal;
+  /** живые счётчики пешеходов слева/справа (пишет TrafficSimulation) — третья строка на пешеходном бейдже */
+  pedCountRef?: RefObject<PedCountRefs>;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const items = useMemo(() => poles(geo), [geo]);
@@ -94,6 +103,10 @@ export function SignalStatusBadge({
             title="Пешеходный"
             value={pedestrianLabel}
             color={PEDESTRIAN_COLOR[pedestrianSignal]}
+            countRef={(el) => {
+              if (!pedCountRef?.current) return;
+              pedCountRef.current[pole.key === "forward" ? "pedLeft" : "pedRight"] = el;
+            }}
           />
         ))}
     </>

@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +38,14 @@ class SignalMode(str, enum.Enum):
     BUTTON = "button"  # зелёный машинам, пока не нажата кнопка вызова
 
 
+class StopPosition(str, enum.Enum):
+    """Где стоит трамвайная/автобусная остановка относительно перехода."""
+
+    NONE = "none"
+    BEFORE = "before"  # до перехода (по ходу движения этого направления)
+    AFTER = "after"  # после перехода
+
+
 vehicle_signal_enum = Enum(
     VehicleSignal, name="vehicle_signal", values_callable=lambda e: [m.value for m in e]
 )
@@ -49,6 +57,9 @@ device_type_enum = Enum(
 )
 signal_mode_enum = Enum(
     SignalMode, name="signal_mode", values_callable=lambda e: [m.value for m in e]
+)
+stop_position_enum = Enum(
+    StopPosition, name="stop_position", values_callable=lambda e: [m.value for m in e]
 )
 
 
@@ -78,6 +89,12 @@ class Crossing(Base):
         CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
         CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
         CheckConstraint("log_retention_hours between 1 and 720", name="ck_log_retention"),
+        CheckConstraint("tram_vph_forward between 0 and 60", name="ck_tram_vph_forward"),
+        CheckConstraint("tram_vph_backward between 0 and 60", name="ck_tram_vph_backward"),
+        CheckConstraint("bus_vph_forward between 0 and 60", name="ck_bus_vph_forward"),
+        CheckConstraint("bus_vph_backward between 0 and 60", name="ck_bus_vph_backward"),
+        CheckConstraint("special_vph_forward between 0 and 30", name="ck_special_vph_forward"),
+        CheckConstraint("special_vph_backward between 0 and 30", name="ck_special_vph_backward"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -129,6 +146,36 @@ class Crossing(Base):
     # (TrafficMetricSnapshot) для этого перехода — старше этого возраста
     # запись при следующей вставке удаляется
     log_retention_hours: Mapped[float] = mapped_column(Float, default=24.0)
+
+    # трамвайные пути/автобусная полоса ЗАМЕНЯЮТ одну из существующих полос
+    # направления (трамвай — самую левую, ближе к оси; автобус — самую
+    # правую, ближе к обочине), число полос lanes_forward/backward при этом
+    # не меняется — см. вывод в frontend/scene/layout.ts. Велополоса,
+    # наоборот, ДОБАВЛЯЕТ ширину — между проезжей частью и тротуаром.
+    has_tram_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_tram_backward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_bus_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_bus_backward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_bike_forward: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_bike_backward: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # остановки — только визуальный маркер платформы у перехода (до/после по
+    # ходу движения этого направления), без имитации посадки/высадки и
+    # задержки движения на ней
+    tram_stop_forward: Mapped[StopPosition] = mapped_column(stop_position_enum, default=StopPosition.NONE)
+    tram_stop_backward: Mapped[StopPosition] = mapped_column(stop_position_enum, default=StopPosition.NONE)
+    bus_stop_forward: Mapped[StopPosition] = mapped_column(stop_position_enum, default=StopPosition.NONE)
+    bus_stop_backward: Mapped[StopPosition] = mapped_column(stop_position_enum, default=StopPosition.NONE)
+
+    # генерация трамваев/автобусов/спецтехники, отдельно на каждое
+    # направление — трамвай/автобус едут по своей выделенной полосе (если
+    # она включена), спецтехника — по обычным полосам вместе с машинами
+    tram_vph_forward: Mapped[float] = mapped_column(Float, default=0.0)
+    tram_vph_backward: Mapped[float] = mapped_column(Float, default=0.0)
+    bus_vph_forward: Mapped[float] = mapped_column(Float, default=0.0)
+    bus_vph_backward: Mapped[float] = mapped_column(Float, default=0.0)
+    special_vph_forward: Mapped[float] = mapped_column(Float, default=0.0)
+    special_vph_backward: Mapped[float] = mapped_column(Float, default=0.0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

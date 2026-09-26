@@ -2,6 +2,8 @@ export type VehicleSignal = "green" | "yellow" | "red";
 export type PedestrianSignal = "walk" | "stop";
 export type DeviceType = "camera" | "microwave" | "loop";
 export type SignalMode = "manual" | "adaptive" | "cycle" | "button";
+/** остановка ОТ, а не задерживает движение — только визуальная платформа */
+export type StopPosition = "none" | "before" | "after";
 
 export interface SignalCycle {
   id: number;
@@ -66,6 +68,27 @@ export interface Crossing extends CrossingBrief {
   button_peds_s: number;
   /** сколько часов хранить журнал и снимки интенсивности */
   log_retention_hours: number;
+  /** трамвайные пути ЗАМЕНЯЮТ самую левую (ближе к оси) полосу этого направления */
+  has_tram_forward: boolean;
+  has_tram_backward: boolean;
+  /** автобусная полоса ЗАМЕНЯЕТ самую правую (ближе к обочине) полосу этого направления */
+  has_bus_forward: boolean;
+  has_bus_backward: boolean;
+  /** велополоса ДОБАВЛЯЕТСЯ между проезжей частью и тротуаром */
+  has_bike_forward: boolean;
+  has_bike_backward: boolean;
+  /** остановки — только визуальный маркер платформы, без имитации посадки/высадки */
+  tram_stop_forward: StopPosition;
+  tram_stop_backward: StopPosition;
+  bus_stop_forward: StopPosition;
+  bus_stop_backward: StopPosition;
+  tram_vph_forward: number;
+  tram_vph_backward: number;
+  bus_vph_forward: number;
+  bus_vph_backward: number;
+  /** спецтехника едет по обычным полосам вместе с машинами */
+  special_vph_forward: number;
+  special_vph_backward: number;
   created_at: string;
   its_devices: ItsDevice[];
   cycles: SignalCycle[];
@@ -139,5 +162,21 @@ export type CrossingPatch = Partial<
     | "button_min_green_s"
     | "button_peds_s"
     | "log_retention_hours"
+    | "has_tram_forward"
+    | "has_tram_backward"
+    | "has_bus_forward"
+    | "has_bus_backward"
+    | "has_bike_forward"
+    | "has_bike_backward"
+    | "tram_stop_forward"
+    | "tram_stop_backward"
+    | "bus_stop_forward"
+    | "bus_stop_backward"
+    | "tram_vph_forward"
+    | "tram_vph_backward"
+    | "bus_vph_forward"
+    | "bus_vph_backward"
+    | "special_vph_forward"
+    | "special_vph_backward"
   >
 >;

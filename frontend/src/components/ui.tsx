@@ -141,6 +141,33 @@ export function TextField({
   );
 }
 
+export function Checkbox({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      className={`flex items-center gap-2 text-sm text-slate-300 ${disabled ? "opacity-40" : "cursor-pointer"}`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-sky-500"
+      />
+      {label}
+    </label>
+  );
+}
+
 export function Select({
   value,
   onChange,

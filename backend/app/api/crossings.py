@@ -15,6 +15,7 @@ from app.models import (
     SceneSnapshot,
     SignalCycle,
     SignalLogEntry,
+    StopPosition,
     TrafficMetricSnapshot,
 )
 from app.schemas import (
@@ -110,6 +111,22 @@ async def update_crossing(
         if cycle is None or cycle.crossing_id != crossing_id:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, "цикл не найден у этого перехода"
+            )
+
+    # остановка требует включённой соответствующей выделенной полосы —
+    # проверяем по ИТОГОВЫМ (патч + уже сохранённые) значениям, раз PATCH
+    # может прислать только один из пары полей
+    for stop_field, lane_field, label in (
+        ("tram_stop_forward", "has_tram_forward", "трамвайной остановки"),
+        ("tram_stop_backward", "has_tram_backward", "трамвайной остановки"),
+        ("bus_stop_forward", "has_bus_forward", "автобусной остановки"),
+        ("bus_stop_backward", "has_bus_backward", "автобусной остановки"),
+    ):
+        stop = data.get(stop_field, getattr(crossing, stop_field))
+        has_lane = data.get(lane_field, getattr(crossing, lane_field))
+        if stop is not StopPosition.NONE and not has_lane:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, f"для {label} нужна соответствующая выделенная полоса"
             )
 
     for key, value in data.items():

@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models import DeviceType, PedestrianSignal, SignalMode, VehicleSignal
+from app.models import DeviceType, PedestrianSignal, SignalMode, StopPosition, VehicleSignal
 
 POLE_DEFAULTS: dict[DeviceType, tuple[float, float]] = {
     # device_type -> (fov_deg, view_radius)
@@ -25,12 +25,41 @@ class CrossingIn(BaseModel):
     vph_backward: float = Field(default=300.0, ge=0, le=2000)
     peds_left_vph: float = Field(default=120.0, ge=0, le=2000)
     peds_right_vph: float = Field(default=120.0, ge=0, le=2000)
+    has_tram_forward: bool = False
+    has_tram_backward: bool = False
+    has_bus_forward: bool = False
+    has_bus_backward: bool = False
+    has_bike_forward: bool = False
+    has_bike_backward: bool = False
+    tram_stop_forward: StopPosition = StopPosition.NONE
+    tram_stop_backward: StopPosition = StopPosition.NONE
+    bus_stop_forward: StopPosition = StopPosition.NONE
+    bus_stop_backward: StopPosition = StopPosition.NONE
+    tram_vph_forward: float = Field(default=0.0, ge=0, le=60)
+    tram_vph_backward: float = Field(default=0.0, ge=0, le=60)
+    bus_vph_forward: float = Field(default=0.0, ge=0, le=60)
+    bus_vph_backward: float = Field(default=0.0, ge=0, le=60)
+    special_vph_forward: float = Field(default=0.0, ge=0, le=30)
+    special_vph_backward: float = Field(default=0.0, ge=0, le=30)
 
     @model_validator(mode="after")
     def check_lanes(self) -> "CrossingIn":
         if self.lanes_forward + self.lanes_backward < 1:
             raise ValueError("нужна хотя бы одна полоса — в любом направлении")
         return self
+
+    @model_validator(mode="after")
+    def check_stops(self) -> "CrossingIn":
+        _check_stop_requires_lane(self.tram_stop_forward, self.has_tram_forward, "трамвайной остановки")
+        _check_stop_requires_lane(self.tram_stop_backward, self.has_tram_backward, "трамвайной остановки")
+        _check_stop_requires_lane(self.bus_stop_forward, self.has_bus_forward, "автобусной остановки")
+        _check_stop_requires_lane(self.bus_stop_backward, self.has_bus_backward, "автобусной остановки")
+        return self
+
+
+def _check_stop_requires_lane(stop: StopPosition, has_lane: bool, label: str) -> None:
+    if stop is not StopPosition.NONE and not has_lane:
+        raise ValueError(f"для {label} нужна соответствующая выделенная полоса")
 
 
 class CrossingUpdate(BaseModel):
@@ -53,6 +82,22 @@ class CrossingUpdate(BaseModel):
     button_min_green_s: float | None = Field(default=None, ge=3, le=180)
     button_peds_s: float | None = Field(default=None, ge=3, le=120)
     log_retention_hours: float | None = Field(default=None, ge=1, le=720)
+    has_tram_forward: bool | None = None
+    has_tram_backward: bool | None = None
+    has_bus_forward: bool | None = None
+    has_bus_backward: bool | None = None
+    has_bike_forward: bool | None = None
+    has_bike_backward: bool | None = None
+    tram_stop_forward: StopPosition | None = None
+    tram_stop_backward: StopPosition | None = None
+    bus_stop_forward: StopPosition | None = None
+    bus_stop_backward: StopPosition | None = None
+    tram_vph_forward: float | None = Field(default=None, ge=0, le=60)
+    tram_vph_backward: float | None = Field(default=None, ge=0, le=60)
+    bus_vph_forward: float | None = Field(default=None, ge=0, le=60)
+    bus_vph_backward: float | None = Field(default=None, ge=0, le=60)
+    special_vph_forward: float | None = Field(default=None, ge=0, le=30)
+    special_vph_backward: float | None = Field(default=None, ge=0, le=30)
 
 
 class ItsDeviceIn(BaseModel):
@@ -159,6 +204,22 @@ class CrossingOut(BaseModel):
     button_min_green_s: float
     button_peds_s: float
     log_retention_hours: float
+    has_tram_forward: bool
+    has_tram_backward: bool
+    has_bus_forward: bool
+    has_bus_backward: bool
+    has_bike_forward: bool
+    has_bike_backward: bool
+    tram_stop_forward: StopPosition
+    tram_stop_backward: StopPosition
+    bus_stop_forward: StopPosition
+    bus_stop_backward: StopPosition
+    tram_vph_forward: float
+    tram_vph_backward: float
+    bus_vph_forward: float
+    bus_vph_backward: float
+    special_vph_forward: float
+    special_vph_backward: float
     created_at: datetime
     its_devices: list[ItsDeviceOut]
     cycles: list[SignalCycleOut]

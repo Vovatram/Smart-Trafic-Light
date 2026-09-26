@@ -3,7 +3,14 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 import type { Crossing } from "../types";
-import { roadGeometry } from "./layout";
+import {
+  busLaneIndex,
+  laneCenterX,
+  roadGeometry,
+  STOP_MARKER_LENGTH,
+  stopMarkerPosition,
+  tramLaneIndex,
+} from "./layout";
 
 interface Box {
   x: number;
@@ -15,6 +22,11 @@ interface Box {
 const ASPHALT = "#23262d";
 const PAINT = "#d8dde6";
 const ZEBRA = "#e9edf4";
+const BIKE_LANE_COLOR = "#1f4d38";
+const BIKE_LANE_STRIPE = "#8fe3b8";
+const BUS_LANE_TINT = "#3a2420";
+const TRAM_RAIL = "#9aa3ad";
+const STOP_PLATFORM = "#5b6472";
 
 function InstancedBoxes({
   items,
@@ -109,6 +121,57 @@ function useMarkings(crossing: Crossing): Box[] {
   }, [crossing]);
 }
 
+const TRAM_GAUGE = 0.9; // расстояние между "рельсами" — чисто визуальное, не настоящая колея
+
+function useTransitOverlays(crossing: Crossing) {
+  return useMemo(() => {
+    const geo = roadGeometry(crossing);
+    const L = geo.roadLength;
+    const w = geo.laneWidth;
+
+    const bikeFill: Box[] = [];
+    const bikeStripes: Box[] = [];
+    if (geo.hasBikeForward) {
+      const x = geo.leftEdge - geo.bikeLeftWidth / 2;
+      bikeFill.push({ x, z: 0, sx: geo.bikeLeftWidth, sz: L * 2 });
+      for (let z = -L + 3; z < L - 3; z += 6) bikeStripes.push({ x, z: z + 1.5, sx: 0.1, sz: 3 });
+    }
+    if (geo.hasBikeBackward) {
+      const x = geo.rightEdge + geo.bikeRightWidth / 2;
+      bikeFill.push({ x, z: 0, sx: geo.bikeRightWidth, sz: L * 2 });
+      for (let z = -L + 3; z < L - 3; z += 6) bikeStripes.push({ x, z: z + 1.5, sx: 0.1, sz: 3 });
+    }
+
+    const busFill: Box[] = [];
+    if (geo.hasBusForward && geo.lanesForward > 0) {
+      busFill.push({ x: laneCenterX(geo, "forward", busLaneIndex(geo, "forward")), z: 0, sx: w - 0.1, sz: L * 2 });
+    }
+    if (geo.hasBusBackward && geo.lanesBackward > 0) {
+      busFill.push({ x: laneCenterX(geo, "backward", busLaneIndex(geo, "backward")), z: 0, sx: w - 0.1, sz: L * 2 });
+    }
+
+    const tramRails: Box[] = [];
+    const rails = (centerX: number) => {
+      tramRails.push({ x: centerX - TRAM_GAUGE / 2, z: 0, sx: 0.08, sz: L * 2 });
+      tramRails.push({ x: centerX + TRAM_GAUGE / 2, z: 0, sx: 0.08, sz: L * 2 });
+    };
+    if (geo.hasTramForward && geo.lanesForward > 0) rails(laneCenterX(geo, "forward", tramLaneIndex()));
+    if (geo.hasTramBackward && geo.lanesBackward > 0) rails(laneCenterX(geo, "backward", tramLaneIndex()));
+
+    const stops: Box[] = [];
+    const pushStop = (dir: "forward" | "backward", lane: number, position: Crossing["tram_stop_forward"]) => {
+      const p = stopMarkerPosition(geo, dir, lane, position);
+      if (p) stops.push({ x: p.x, z: p.z, sx: w * 0.6, sz: STOP_MARKER_LENGTH });
+    };
+    if (geo.hasTramForward) pushStop("forward", tramLaneIndex(), geo.tramStopForward);
+    if (geo.hasTramBackward) pushStop("backward", tramLaneIndex(), geo.tramStopBackward);
+    if (geo.hasBusForward) pushStop("forward", busLaneIndex(geo, "forward"), geo.busStopForward);
+    if (geo.hasBusBackward) pushStop("backward", busLaneIndex(geo, "backward"), geo.busStopBackward);
+
+    return { bikeFill, bikeStripes, busFill, tramRails, stops };
+  }, [crossing]);
+}
+
 function useZebra(crossing: Crossing): Box[] {
   return useMemo(() => {
     const geo = roadGeometry(crossing);
@@ -116,8 +179,9 @@ function useZebra(crossing: Crossing): Box[] {
     const stripeWidth = 0.6;
     const gapWidth = 0.6;
     const step = stripeWidth + gapWidth;
-    let x = geo.leftEdge + stripeWidth / 2;
-    while (x < geo.rightEdge) {
+    // через полный габарит, включая велополосу — переход есть и для велосипедистов
+    let x = geo.outerLeftEdge + stripeWidth / 2;
+    while (x < geo.outerRightEdge) {
       boxes.push({ x, z: 0, sx: stripeWidth, sz: geo.crossingWidth });
       x += step;
     }
@@ -138,6 +202,7 @@ export function Roads({
 }) {
   const markings = useMarkings(crossing);
   const zebra = useZebra(crossing);
+  const transit = useTransitOverlays(crossing);
   const geo = roadGeometry(crossing);
   const width = Math.max(geo.rightEdge - geo.leftEdge, geo.laneWidth);
   const centerX = (geo.rightEdge + geo.leftEdge) / 2;
@@ -165,8 +230,13 @@ export function Roads({
         <meshStandardMaterial color={ASPHALT} roughness={0.9} />
       </mesh>
 
+      <InstancedBoxes items={transit.busFill} color={BUS_LANE_TINT} y={0.003} height={0.006} />
+      <InstancedBoxes items={transit.bikeFill} color={BIKE_LANE_COLOR} y={0.0025} height={0.005} />
       <InstancedBoxes items={markings} color={PAINT} y={0.02} />
       <InstancedBoxes items={zebra} color={ZEBRA} y={0.021} />
+      <InstancedBoxes items={transit.bikeStripes} color={BIKE_LANE_STRIPE} y={0.022} />
+      <InstancedBoxes items={transit.tramRails} color={TRAM_RAIL} y={0.03} height={0.04} />
+      <InstancedBoxes items={transit.stops} color={STOP_PLATFORM} y={0.08} height={0.16} />
     </group>
   );
 }
