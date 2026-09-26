@@ -25,7 +25,7 @@ export function InfoPanel({
   placingType,
   onStartPlacing,
   onStopPlacing,
-  editingId,
+  selectedDeviceIds,
   onSelectDevice,
   generationMode,
   onStartGeneration,
@@ -43,8 +43,8 @@ export function InfoPanel({
   placingType: DeviceType | null;
   onStartPlacing: (type: DeviceType) => void;
   onStopPlacing: () => void;
-  editingId: number | null;
-  onSelectDevice: (id: number) => void;
+  selectedDeviceIds: ReadonlySet<number>;
+  onSelectDevice: (id: number, additive: boolean) => void;
   generationMode: boolean;
   onStartGeneration: () => void;
   onStopGeneration: () => void;
@@ -130,10 +130,10 @@ export function InfoPanel({
               {crossing.its_devices.map((device) => (
                 <Button
                   key={device.id}
-                  active={device.id === editingId}
+                  active={selectedDeviceIds.has(device.id)}
                   disabled={busy}
                   className="w-full text-left"
-                  onClick={() => onSelectDevice(device.id)}
+                  onClick={(event) => onSelectDevice(device.id, event.ctrlKey || event.metaKey)}
                 >
                   {DEVICE_LABEL[device.device_type]} №{device.id}
                 </Button>

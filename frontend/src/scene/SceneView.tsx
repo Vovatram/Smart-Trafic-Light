@@ -72,8 +72,9 @@ export function SceneView({
   view,
   placingType,
   onPlace,
-  editingId,
+  selectedDeviceIds,
   onSelectDevice,
+  onClearSelection,
   generationMode,
   onChangeCrossing,
   vehicleSignal,
@@ -88,8 +89,11 @@ export function SceneView({
   view: ViewName;
   placingType?: DeviceType | null;
   onPlace?: (x: number, z: number) => void;
-  editingId?: number | null;
-  onSelectDevice?: (id: number) => void;
+  /** id выбранных ИТС-объектов — у каждого из них виден сектор обзора */
+  selectedDeviceIds: ReadonlySet<number>;
+  onSelectDevice?: (id: number, additive: boolean) => void;
+  /** клик по пустому месту сцены (вне режима установки) — сбросить выбор объектов */
+  onClearSelection?: () => void;
   generationMode?: boolean;
   onChangeCrossing?: (patch: CrossingPatch) => void;
   vehicleSignal: VehicleSignal;
@@ -124,11 +128,15 @@ export function SceneView({
   };
 
   const handleGroundClick = (event: ThreeEvent<MouseEvent>) => {
-    if (!placingType || !crossing || !onPlace) return;
-    event.stopPropagation();
-    const [x, z] = clampForPlacement(event.point.x, event.point.z);
-    onPlace(x, z);
-    setHover(null);
+    if (placingType && crossing && onPlace) {
+      event.stopPropagation();
+      const [x, z] = clampForPlacement(event.point.x, event.point.z);
+      onPlace(x, z);
+      setHover(null);
+      return;
+    }
+    // клик по пустому месту вне установки — сбросить выбор ИТС-объектов, если он есть
+    if (!placingType && selectedDeviceIds.size > 0) onClearSelection?.();
   };
 
   useEffect(() => {
@@ -159,7 +167,7 @@ export function SceneView({
         <>
           <Roads
             crossing={crossing}
-            onGroundClick={placingType ? handleGroundClick : undefined}
+            onGroundClick={handleGroundClick}
             onGroundPointerMove={placingType ? handleGroundMove : undefined}
             onGroundPointerLeave={placingType ? () => setHover(null) : undefined}
           />
@@ -178,7 +186,7 @@ export function SceneView({
           <ItsDevices
             crossing={crossing}
             selectable={!placingType}
-            editingId={editingId ?? null}
+            selectedIds={selectedDeviceIds}
             onSelect={onSelectDevice ?? (() => {})}
           />
           {placingType && hover && <PlacementGhost type={placingType} x={hover[0]} z={hover[1]} />}

@@ -100,12 +100,12 @@ function PoleDevice({
   color: string;
   selectable: boolean;
   showWedge: boolean;
-  onSelect: (id: number) => void;
+  onSelect: (id: number, additive: boolean) => void;
 }) {
   const height = device.height ?? 5;
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    if (selectable) onSelect(device.id);
+    if (selectable) onSelect(device.id, event.ctrlKey || event.metaKey);
   };
 
   return (
@@ -139,12 +139,12 @@ function LoopDevice({
   device: ItsDevice;
   color: string;
   selectable: boolean;
-  onSelect: (id: number) => void;
+  onSelect: (id: number, additive: boolean) => void;
 }) {
   const size = device.loop_length ?? 2;
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    if (selectable) onSelect(device.id);
+    if (selectable) onSelect(device.id, event.ctrlKey || event.metaKey);
   };
 
   return (
@@ -185,14 +185,14 @@ function LoopOutline({ size, color, fillOpacity }: { size: number; color: string
 export function ItsDevices({
   crossing,
   selectable,
-  editingId,
+  selectedIds,
   onSelect,
 }: {
   crossing: Crossing;
   selectable: boolean;
-  /** id объекта, который сейчас редактируется — только у него виден сектор обзора */
-  editingId: number | null;
-  onSelect: (id: number) => void;
+  /** выбранные объекты — сектор обзора виден у каждого из них (одного или нескольких) */
+  selectedIds: ReadonlySet<number>;
+  onSelect: (id: number, additive: boolean) => void;
 }) {
   return (
     <group>
@@ -206,7 +206,7 @@ export function ItsDevices({
             device={device}
             color={color}
             selectable={selectable}
-            showWedge={device.id === editingId}
+            showWedge={selectedIds.has(device.id)}
             onSelect={onSelect}
           />
         );

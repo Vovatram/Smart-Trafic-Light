@@ -23,7 +23,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placingType, setPlacingType] = useState<DeviceType | null>(null);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<ReadonlySet<number>>(new Set());
   const [generationMode, setGenerationMode] = useState(false);
   const [signalPanelOpen, setSignalPanelOpen] = useState(true);
 
@@ -81,7 +81,7 @@ export default function App() {
 
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
-    setSelectedDeviceId(null);
+    setSelectedDeviceIds(new Set());
     setGenerationMode(false);
     setView("top");
   }, []);
@@ -90,7 +90,7 @@ export default function App() {
   const onStartGeneration = useCallback(() => {
     setGenerationMode(true);
     setPlacingType(null);
-    setSelectedDeviceId(null);
+    setSelectedDeviceIds(new Set());
     setView("top");
   }, []);
   const onStopGeneration = useCallback(() => setGenerationMode(false), []);
@@ -103,14 +103,23 @@ export default function App() {
           setCrossing((prev) => (prev ? { ...prev, its_devices: [...prev.its_devices, device] } : prev));
           // установили объект — сразу выходим из режима установки и открываем его редактирование
           setPlacingType(null);
-          setSelectedDeviceId(device.id);
+          setSelectedDeviceIds(new Set([device.id]));
         }),
       );
     },
     [crossing, placingType, run],
   );
 
-  const onSelectDevice = useCallback((id: number) => setSelectedDeviceId(id), []);
+  const onSelectDevice = useCallback((id: number, additive: boolean) => {
+    setSelectedDeviceIds((prev) => {
+      if (!additive) return new Set([id]);
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const onClearSelection = useCallback(() => setSelectedDeviceIds(new Set()), []);
 
   const onChangeDevice = useCallback(
     (id: number, devicePatch: Parameters<typeof api.updateItsDevice>[1]) => {
@@ -135,7 +144,7 @@ export default function App() {
             prev ? { ...prev, its_devices: prev.its_devices.filter((d) => d.id !== id) } : prev,
           );
         }),
-      ).then(() => setSelectedDeviceId(null));
+      ).then(() => setSelectedDeviceIds(new Set()));
     },
     [run],
   );
@@ -143,7 +152,7 @@ export default function App() {
   // --- светофор: клик по лампе в сцене раскрывает панель режима и переводит в ручной ---
   const focusSignalPanel = useCallback(() => {
     setSignalPanelOpen(true);
-    setSelectedDeviceId(null);
+    setSelectedDeviceIds(new Set());
   }, []);
   const onClickVehicleLight = useCallback(() => {
     focusSignalPanel();
@@ -210,7 +219,12 @@ export default function App() {
     [run],
   );
 
-  const selectedDevice = crossing?.its_devices.find((d) => d.id === selectedDeviceId) ?? null;
+  // редактор открывается только при выборе ровно одного объекта; при нескольких
+  // выбранных панель скрыта, но секторы обзора у всех выбранных остаются видны
+  const selectedDevice =
+    selectedDeviceIds.size === 1
+      ? (crossing?.its_devices.find((d) => selectedDeviceIds.has(d.id)) ?? null)
+      : null;
 
   const formatBadge = (value: string): string => {
     if (!crossing || crossing.signal_mode === "manual" || !value) return "";
@@ -226,8 +240,9 @@ export default function App() {
         view={view}
         placingType={placingType}
         onPlace={onPlace}
-        editingId={selectedDeviceId}
+        selectedDeviceIds={selectedDeviceIds}
         onSelectDevice={onSelectDevice}
+        onClearSelection={onClearSelection}
         generationMode={generationMode}
         onChangeCrossing={patch}
         vehicleSignal={live.vehicle}
@@ -249,19 +264,25 @@ export default function App() {
         </p>
       </header>
 
-      <aside
-        className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto"
-        style={{ maxHeight: "calc(100vh - 2rem)" }}
-      >
-        {selectedDevice && (
+      {selectedDevice && (
+        <aside
+          className="absolute top-24 left-4 z-10 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
+          style={{ maxHeight: "calc(100vh - 7rem)" }}
+        >
           <DeviceEditor
             device={selectedDevice}
             busy={busy}
             onChange={(devicePatch) => onChangeDevice(selectedDevice.id, devicePatch)}
             onDelete={() => onDeleteDevice(selectedDevice.id)}
-            onClose={() => setSelectedDeviceId(null)}
+            onClose={onClearSelection}
           />
-        )}
+        </aside>
+      )}
+
+      <aside
+        className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto"
+        style={{ maxHeight: "calc(100vh - 2rem)" }}
+      >
         {crossing && (
           <SignalModePanel
             crossing={crossing}
@@ -295,7 +316,7 @@ export default function App() {
           placingType={placingType}
           onStartPlacing={onStartPlacing}
           onStopPlacing={onStopPlacing}
-          editingId={selectedDeviceId}
+          selectedDeviceIds={selectedDeviceIds}
           onSelectDevice={onSelectDevice}
           generationMode={generationMode}
           onStartGeneration={onStartGeneration}
