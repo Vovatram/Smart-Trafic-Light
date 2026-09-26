@@ -10,6 +10,10 @@ const CAR_SPEED = 8; // м/с
 const PED_SPEED = 1.3; // м/с
 const CAR_POOL = 24;
 const PED_POOL = 24;
+const CAR_LENGTH = 4.4;
+const CAR_WIDTH = 1.8;
+const PED_DEPTH = 0.4;
+const PED_WIDTH = 0.5;
 const CAR_MIN_GAP = 6.5; // м — минимальная дистанция до идущей впереди машины в той же полосе
 const PED_MIN_GAP = 1.0; // м — то же самое для пешеходов на одной "дорожке"
 const LANE_EPS = 0.5; // допуск, чтобы считать двух агентов "в одной полосе"
@@ -144,10 +148,14 @@ function advanceWithGate(
  * Машины продолжают появляться и ехать даже на красный — просто тормозят
  * перед стоп-линией (crossingHalf + stopOffset от центра) и ждут зелёного.
  * Та, что уже проехала эту границу, доезжает переход не останавливаясь.
+ *
+ * gate считается по координате ПЕРЕДНЕГО бампера, а не центра машины —
+ * иначе центр стоит перед линией, а капот (половина CAR_LENGTH) торчит
+ * почти до середины перехода. Добавляем половину длины кузова к отступу.
  */
 function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
   const green = crossing.vehicle_signal === "green";
-  const stopZ = geo.crossingHalf + geo.stopOffset;
+  const stopZ = geo.crossingHalf + geo.stopOffset + CAR_LENGTH / 2;
   advanceWithGate(pool, dt, "z", CAR_SPEED, CAR_MIN_GAP, green, stopZ, {
     min: -geo.roadLength,
     max: geo.roadLength,
@@ -164,8 +172,10 @@ function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeom
   // "граница дороги" в терминах gate — расстояние от центра (0) до края
   // проезжей части ближе к её "своей" стороне (leftEdge/rightEdge — со
   // знаком, gate в advanceWithGate считается симметрично от 0)
-  const gateLeft = -geo.leftEdge; // leftEdge отрицательный — переводим в положительную "дистанцию от 0"
-  const gateRight = geo.rightEdge;
+  // тот же сдвиг на половину "длины" тела, что и у машин — иначе передняя
+  // нога пешехода заступает на дорогу раньше, чем его центр дойдёт до края
+  const gateLeft = -geo.leftEdge + PED_DEPTH / 2; // leftEdge отрицательный — переводим в положительную "дистанцию от 0"
+  const gateRight = geo.rightEdge + PED_DEPTH / 2;
   // площадки спавна разной глубины слева/справа возможны при разных lane-counts,
   // поэтому despawn считаем по каждой стороне отдельно, а не общим gate
   const spawnDepth = PED_SPAWN_MARGIN + PED_SPAWN_DEPTH;
@@ -304,9 +314,9 @@ export function TrafficSimulation({ crossing }: { crossing: Crossing }) {
       {Array.from({ length: CAR_POOL }).map((_, i) => (
         <group key={`car-${i}`} ref={(el) => (carGroups.current[i] = el)} visible={false}>
           <TwoTonePod
-            width={1.8}
+            width={CAR_WIDTH}
             height={1.0}
-            depth={4.4}
+            depth={CAR_LENGTH}
             y={0.58}
             refA={(el) => (carHalvesA.current[i] = el)}
             refB={(el) => (carHalvesB.current[i] = el)}
@@ -316,9 +326,9 @@ export function TrafficSimulation({ crossing }: { crossing: Crossing }) {
       {Array.from({ length: PED_POOL }).map((_, i) => (
         <group key={`ped-${i}`} ref={(el) => (pedGroups.current[i] = el)} visible={false}>
           <TwoTonePod
-            width={0.5}
+            width={PED_WIDTH}
             height={1.6}
-            depth={0.4}
+            depth={PED_DEPTH}
             y={0.8}
             refA={(el) => (pedHalvesA.current[i] = el)}
             refB={(el) => (pedHalvesB.current[i] = el)}
