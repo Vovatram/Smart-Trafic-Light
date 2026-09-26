@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-signal-green: oklch(0.72 0.19 145);
+  --color-signal-yellow: oklch(0.83 0.17 88);
+  --color-signal-red: oklch(0.62 0.22 27);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: #0b1120;
+  color: #e2e8f0;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
