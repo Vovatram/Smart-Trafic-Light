@@ -34,6 +34,22 @@ export interface PedCountRefs {
   pedRight: HTMLDivElement | null;
 }
 
+/** Ключи ручного спавна — кнопка "Спавн" в каждой плашке интенсивности (GenerationBadges). */
+export type SpawnKind =
+  | "forward"
+  | "backward"
+  | "pedLeft"
+  | "pedRight"
+  | "special-forward"
+  | "special-backward"
+  | "tram-forward"
+  | "tram-backward"
+  | "bus-forward"
+  | "bus-backward";
+
+/** Множество "запросов на немедленный спавн" — кладёт GenerationBadges, разбирает и чистит TrafficSimulation за один кадр. */
+export type ManualSpawnRef = RefObject<Set<SpawnKind>>;
+
 /** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
 function CountBadge({
   x,
@@ -106,6 +122,11 @@ function makePool(n: number): Slot[] {
  * Общий спавн для машин/трамваев/автобусов/спецтехники — отличаются только
  * тем, В КАКИХ полосах им можно появиться (обычные машины и спецтехника —
  * во всех "автомобильных", трамвай/автобус — строго в своей выделенной).
+ *
+ * forceForward/forceBackward — кнопка "Спавн" в панели интенсивности:
+ * спавнит одного агента немедленно, не дожидаясь вероятностного тика и
+ * даже если интенсивность выставлена в 0 (это явный ручной запрос, а не
+ * "естественный" поток).
  */
 function trySpawnInLanes(
   pool: Slot[],
@@ -115,29 +136,30 @@ function trySpawnInLanes(
   vphForward: number,
   vphBackward: number,
   dt: number,
+  forceForward = false,
+  forceBackward = false,
 ) {
-  if (forwardLanes.length > 0 && vphForward > 0) {
-    if (Math.random() < (vphForward / 3600) * dt) {
-      const slot = pool.find((s) => !s.active);
-      if (slot) {
-        const lane = forwardLanes[Math.floor(Math.random() * forwardLanes.length)];
-        slot.active = true;
-        slot.dir = 1;
-        slot.x = laneCenterX(geo, "forward", lane);
-        slot.z = -geo.roadLength;
-      }
+  if (forwardLanes.length > 0 && (forceForward || (vphForward > 0 && Math.random() < (vphForward / 3600) * dt))) {
+    const slot = pool.find((s) => !s.active);
+    if (slot) {
+      const lane = forwardLanes[Math.floor(Math.random() * forwardLanes.length)];
+      slot.active = true;
+      slot.dir = 1;
+      slot.x = laneCenterX(geo, "forward", lane);
+      slot.z = -geo.roadLength;
     }
   }
-  if (backwardLanes.length > 0 && vphBackward > 0) {
-    if (Math.random() < (vphBackward / 3600) * dt) {
-      const slot = pool.find((s) => !s.active);
-      if (slot) {
-        const lane = backwardLanes[Math.floor(Math.random() * backwardLanes.length)];
-        slot.active = true;
-        slot.dir = -1;
-        slot.x = laneCenterX(geo, "backward", lane);
-        slot.z = geo.roadLength;
-      }
+  if (
+    backwardLanes.length > 0 &&
+    (forceBackward || (vphBackward > 0 && Math.random() < (vphBackward / 3600) * dt))
+  ) {
+    const slot = pool.find((s) => !s.active);
+    if (slot) {
+      const lane = backwardLanes[Math.floor(Math.random() * backwardLanes.length)];
+      slot.active = true;
+      slot.dir = -1;
+      slot.x = laneCenterX(geo, "backward", lane);
+      slot.z = geo.roadLength;
     }
   }
 }
@@ -146,29 +168,32 @@ const PED_SPAWN_MARGIN = 1.0; // ближайший к бордюру край �
 const PED_SPAWN_DEPTH = 2.0; // насколько вглубь тротуара разбросан спавн
 const PED_SPAWN_HALF_WIDTH_EXTRA = 1.0; // площадка чуть шире самого перехода
 
-function trySpawnPeds(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: number) {
+function trySpawnPeds(
+  pool: Slot[],
+  geo: RoadGeometry,
+  crossing: Crossing,
+  dt: number,
+  forceLeft = false,
+  forceRight = false,
+) {
   const halfWidth = geo.crossingWidth / 2 + PED_SPAWN_HALF_WIDTH_EXTRA;
-  if (crossing.peds_left_vph > 0) {
-    if (Math.random() < (crossing.peds_left_vph / 3600) * dt) {
-      const slot = pool.find((s) => !s.active);
-      if (slot) {
-        slot.active = true;
-        slot.dir = 1;
-        // площадка перед переходом, а не линия: разброс и вглубь тротуара, и вдоль дороги
-        slot.x = geo.leftEdge - PED_SPAWN_MARGIN - Math.random() * PED_SPAWN_DEPTH;
-        slot.z = (Math.random() - 0.5) * 2 * halfWidth;
-      }
+  if (forceLeft || (crossing.peds_left_vph > 0 && Math.random() < (crossing.peds_left_vph / 3600) * dt)) {
+    const slot = pool.find((s) => !s.active);
+    if (slot) {
+      slot.active = true;
+      slot.dir = 1;
+      // площадка перед переходом, а не линия: разброс и вглубь тротуара, и вдоль дороги
+      slot.x = geo.leftEdge - PED_SPAWN_MARGIN - Math.random() * PED_SPAWN_DEPTH;
+      slot.z = (Math.random() - 0.5) * 2 * halfWidth;
     }
   }
-  if (crossing.peds_right_vph > 0) {
-    if (Math.random() < (crossing.peds_right_vph / 3600) * dt) {
-      const slot = pool.find((s) => !s.active);
-      if (slot) {
-        slot.active = true;
-        slot.dir = -1;
-        slot.x = geo.rightEdge + PED_SPAWN_MARGIN + Math.random() * PED_SPAWN_DEPTH;
-        slot.z = (Math.random() - 0.5) * 2 * halfWidth;
-      }
+  if (forceRight || (crossing.peds_right_vph > 0 && Math.random() < (crossing.peds_right_vph / 3600) * dt)) {
+    const slot = pool.find((s) => !s.active);
+    if (slot) {
+      slot.active = true;
+      slot.dir = -1;
+      slot.x = geo.rightEdge + PED_SPAWN_MARGIN + Math.random() * PED_SPAWN_DEPTH;
+      slot.z = (Math.random() - 0.5) * 2 * halfWidth;
     }
   }
 }
@@ -403,6 +428,7 @@ export function TrafficSimulation({
   selectedSensorIds,
   replay,
   pedCountRef,
+  manualSpawnRef,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
@@ -420,6 +446,8 @@ export function TrafficSimulation({
   /** сюда пишутся живые счётчики пешеходов слева/справа — их читает бейдж
    * "Пешеходный" на светофоре (третья строка, под секундами), см. SignalStatusBadge */
   pedCountRef?: RefObject<PedCountRefs>;
+  /** запросы кнопки "Спавн" из GenerationBadges — разбираются и очищаются за один кадр */
+  manualSpawnRef?: ManualSpawnRef;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const allSensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
@@ -467,7 +495,35 @@ export function TrafficSimulation({
     const carLanesFwd = carLaneIndices(geo, "forward");
     const carLanesBack = carLaneIndices(geo, "backward");
 
-    trySpawnInLanes(cars.current, geo, carLanesFwd, carLanesBack, crossing.vph_forward, crossing.vph_backward, dt);
+    // разбираем и сразу очищаем запросы кнопки "Спавн" — каждый обрабатывается ровно один раз
+    const manual = manualSpawnRef?.current;
+    const consume = (kind: SpawnKind): boolean => {
+      if (!manual?.has(kind)) return false;
+      manual.delete(kind);
+      return true;
+    };
+    const forceForward = consume("forward");
+    const forceBackward = consume("backward");
+    const forcePedLeft = consume("pedLeft");
+    const forcePedRight = consume("pedRight");
+    const forceSpecialFwd = consume("special-forward");
+    const forceSpecialBack = consume("special-backward");
+    const forceTramFwd = consume("tram-forward");
+    const forceTramBack = consume("tram-backward");
+    const forceBusFwd = consume("bus-forward");
+    const forceBusBack = consume("bus-backward");
+
+    trySpawnInLanes(
+      cars.current,
+      geo,
+      carLanesFwd,
+      carLanesBack,
+      crossing.vph_forward,
+      crossing.vph_backward,
+      dt,
+      forceForward,
+      forceBackward,
+    );
     trySpawnInLanes(
       specials.current,
       geo,
@@ -476,6 +532,8 @@ export function TrafficSimulation({
       crossing.special_vph_forward,
       crossing.special_vph_backward,
       dt,
+      forceSpecialFwd,
+      forceSpecialBack,
     );
     trySpawnInLanes(
       trams.current,
@@ -485,6 +543,8 @@ export function TrafficSimulation({
       crossing.tram_vph_forward,
       crossing.tram_vph_backward,
       dt,
+      forceTramFwd,
+      forceTramBack,
     );
     trySpawnInLanes(
       buses.current,
@@ -494,8 +554,10 @@ export function TrafficSimulation({
       crossing.bus_vph_forward,
       crossing.bus_vph_backward,
       dt,
+      forceBusFwd,
+      forceBusBack,
     );
-    trySpawnPeds(peds.current, geo, crossing, dt);
+    trySpawnPeds(peds.current, geo, crossing, dt, forcePedLeft, forcePedRight);
 
     const green = vehicleSignal === "green";
     advanceVehicles(cars.current, CAR_LENGTH, CAR_SPEED, CAR_MIN_GAP, green, dt, geo);

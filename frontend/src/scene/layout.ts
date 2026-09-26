@@ -202,24 +202,3 @@ export function stopMarkerPosition(
   return { x, z };
 }
 
-export type SpawnKey = "forward" | "backward" | "pedLeft" | "pedRight";
-
-export interface SpawnPoint {
-  key: SpawnKey;
-  x: number;
-  z: number;
-}
-
-/** 4 "начала" потоков — оба конца дороги (машины) и обе обочины перехода (пешеходы). */
-export function spawnPoints(geo: RoadGeometry): SpawnPoint[] {
-  const points: SpawnPoint[] = [];
-  if (geo.lanesForward > 0) {
-    points.push({ key: "forward", x: geo.leftEdge / 2, z: -geo.roadLength });
-  }
-  if (geo.lanesBackward > 0) {
-    points.push({ key: "backward", x: geo.rightEdge / 2, z: geo.roadLength });
-  }
-  points.push({ key: "pedLeft", x: sidewalkX(geo, "left"), z: 0 });
-  points.push({ key: "pedRight", x: sidewalkX(geo, "right"), z: 0 });
-  return points;
-}

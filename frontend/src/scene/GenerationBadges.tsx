@@ -1,112 +1,68 @@
 import { Html } from "@react-three/drei";
 
 import type { Crossing, CrossingPatch } from "../types";
-import { busLaneIndex, laneCenterX, roadGeometry, spawnPoints, tramLaneIndex, type SpawnKey } from "./layout";
+import { roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
+import type { ManualSpawnRef, SpawnKind } from "./TrafficSimulation";
 
-const LABEL: Record<SpawnKey, string> = {
-  forward: "Машины →",
-  backward: "Машины ←",
-  pedLeft: "Пешеходы →",
-  pedRight: "Пешеходы ←",
-};
-
-const FIELD: Record<SpawnKey, keyof CrossingPatch> = {
-  forward: "vph_forward",
-  backward: "vph_backward",
-  pedLeft: "peds_left_vph",
-  pedRight: "peds_right_vph",
-};
-
-const UNIT: Record<SpawnKey, string> = {
-  forward: "авто/ч",
-  backward: "авто/ч",
-  pedLeft: "чел/ч",
-  pedRight: "чел/ч",
-};
-
-interface Point {
-  key: string;
-  x: number;
-  z: number;
+interface Entry {
+  spawnKind: SpawnKind;
   label: string;
   field: keyof CrossingPatch;
   unit: string;
   max: number;
 }
 
-/** Спецтехника едет по обычным полосам — точки ставим чуть в глубине дороги от основного "Машины", чтобы бейджи не перекрывались. */
-function transitPoints(crossing: Crossing): Point[] {
-  const geo = roadGeometry(crossing);
-  const L = geo.roadLength;
-  const points: Point[] = [];
-
+/** Всё, что реально едет "вперёд" с этого конца дороги: машины (всегда, если есть полосы), спецтехника, трамвай/автобус (только если включена их полоса). */
+function forwardCluster(geo: RoadGeometry): Entry[] {
+  const entries: Entry[] = [];
   if (geo.lanesForward > 0) {
-    points.push({
-      key: "special-forward",
-      x: laneCenterX(geo, "forward", 0),
-      z: -L + 6,
+    entries.push({ spawnKind: "forward", label: "Машины →", field: "vph_forward", unit: "авто/ч", max: 2000 });
+    entries.push({
+      spawnKind: "special-forward",
       label: "Спецтехника →",
       field: "special_vph_forward",
       unit: "ед/ч",
       max: 30,
     });
   }
+  if (geo.hasTramForward) {
+    entries.push({ spawnKind: "tram-forward", label: "Трамвай →", field: "tram_vph_forward", unit: "ед/ч", max: 60 });
+  }
+  if (geo.hasBusForward) {
+    entries.push({ spawnKind: "bus-forward", label: "Автобус →", field: "bus_vph_forward", unit: "ед/ч", max: 60 });
+  }
+  return entries;
+}
+
+function backwardCluster(geo: RoadGeometry): Entry[] {
+  const entries: Entry[] = [];
   if (geo.lanesBackward > 0) {
-    points.push({
-      key: "special-backward",
-      x: laneCenterX(geo, "backward", 0),
-      z: L - 6,
+    entries.push({ spawnKind: "backward", label: "Машины ←", field: "vph_backward", unit: "авто/ч", max: 2000 });
+    entries.push({
+      spawnKind: "special-backward",
       label: "Спецтехника ←",
       field: "special_vph_backward",
       unit: "ед/ч",
       max: 30,
     });
   }
-  if (geo.hasTramForward) {
-    points.push({
-      key: "tram-forward",
-      x: laneCenterX(geo, "forward", tramLaneIndex()),
-      z: -L,
-      label: "Трамвай →",
-      field: "tram_vph_forward",
-      unit: "ед/ч",
-      max: 60,
-    });
-  }
   if (geo.hasTramBackward) {
-    points.push({
-      key: "tram-backward",
-      x: laneCenterX(geo, "backward", tramLaneIndex()),
-      z: L,
-      label: "Трамвай ←",
-      field: "tram_vph_backward",
-      unit: "ед/ч",
-      max: 60,
-    });
-  }
-  if (geo.hasBusForward) {
-    points.push({
-      key: "bus-forward",
-      x: laneCenterX(geo, "forward", busLaneIndex(geo, "forward")),
-      z: -L + 3,
-      label: "Автобус →",
-      field: "bus_vph_forward",
-      unit: "ед/ч",
-      max: 60,
-    });
+    entries.push({ spawnKind: "tram-backward", label: "Трамвай ←", field: "tram_vph_backward", unit: "ед/ч", max: 60 });
   }
   if (geo.hasBusBackward) {
-    points.push({
-      key: "bus-backward",
-      x: laneCenterX(geo, "backward", busLaneIndex(geo, "backward")),
-      z: L - 3,
-      label: "Автобус ←",
-      field: "bus_vph_backward",
-      unit: "ед/ч",
-      max: 60,
-    });
+    entries.push({ spawnKind: "bus-backward", label: "Автобус ←", field: "bus_vph_backward", unit: "ед/ч", max: 60 });
   }
-  return points;
+  return entries;
+}
+
+/**
+ * Ряд панелек рядом друг с другом (по X), а не наложенных друг на друга —
+ * шаг пропорционален зуму вида "сверху" (viewPositions в SceneView ставит
+ * камеру на высоту ~roadLength*1.6), иначе на длинной дороге фиксированный
+ * шаг в метрах снова окажется меньше ширины самой панельки на экране.
+ */
+function rowPositions(anchorX: number, z: number, count: number, spacing: number): Array<{ x: number; z: number }> {
+  return Array.from({ length: count }, (_, i) => ({ x: anchorX + (i - (count - 1) / 2) * spacing, z }));
 }
 
 function IntensityInput({
@@ -117,6 +73,7 @@ function IntensityInput({
   max,
   value,
   onChange,
+  onSpawn,
 }: {
   x: number;
   z: number;
@@ -125,6 +82,7 @@ function IntensityInput({
   max: number;
   value: number;
   onChange: (next: number) => void;
+  onSpawn?: () => void;
 }) {
   return (
     <Html position={[x, 1.8, z]} center>
@@ -144,6 +102,14 @@ function IntensityInput({
           className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-center text-sm text-slate-100"
         />
         <span className="text-[10px] text-slate-500">{unit}</span>
+        {onSpawn && (
+          <button
+            onClick={onSpawn}
+            className="mt-0.5 w-full rounded bg-sky-600/80 px-1 py-0.5 text-[10px] font-semibold text-white transition hover:bg-sky-500"
+          >
+            Спавн
+          </button>
+        )}
       </div>
     </Html>
   );
@@ -151,47 +117,64 @@ function IntensityInput({
 
 /**
  * Единственные надписи, оставшиеся на сцене в режиме "Генерация" — сама
- * интенсивность (число в час) на каждое "начало" потока: машины/пешеходы (4
- * основных точки) плюс трамвай/автобус (только если включена их полоса) и
- * спецтехника (всегда, если у направления есть хоть одна полоса).
+ * интенсивность (число в час) на каждое "начало" потока, плюс кнопка
+ * "Спавн" — спавнит одного агента этого типа немедленно, не дожидаясь
+ * вероятностного тика (удобно проверить, что полоса/остановка настроена
+ * верно, не выставляя интенсивность и не ожидая её). Все панельки одного
+ * "начала" (машины/спецтехника/трамвай/автобус) выстроены в ряд рядом друг
+ * с другом, а не наложены друг на друга.
  */
 export function GenerationBadges({
   crossing,
   onChange,
+  manualSpawnRef,
 }: {
   crossing: Crossing;
   onChange: (patch: CrossingPatch) => void;
+  manualSpawnRef?: ManualSpawnRef;
 }) {
   const geo = roadGeometry(crossing);
-  const points = spawnPoints(geo);
-  const transit = transitPoints(crossing);
+  const spacing = Math.max(geo.roadLength, 20) * 0.24;
+
+  const forward = forwardCluster(geo);
+  const backward = backwardCluster(geo);
+  const forwardPos = rowPositions(geo.leftEdge / 2, -geo.roadLength, forward.length, spacing);
+  const backwardPos = rowPositions(geo.rightEdge / 2, geo.roadLength, backward.length, spacing);
+
+  const pedLeft: Entry = { spawnKind: "pedLeft", label: "Пешеходы →", field: "peds_left_vph", unit: "чел/ч", max: 2000 };
+  const pedRight: Entry = {
+    spawnKind: "pedRight",
+    label: "Пешеходы ←",
+    field: "peds_right_vph",
+    unit: "чел/ч",
+    max: 2000,
+  };
+
+  const requestSpawn = (kind: SpawnKind) => {
+    if (!manualSpawnRef) return;
+    manualSpawnRef.current.add(kind);
+  };
+
+  const renderEntry = (entry: Entry, pos: { x: number; z: number }) => (
+    <IntensityInput
+      key={entry.spawnKind}
+      x={pos.x}
+      z={pos.z}
+      label={entry.label}
+      unit={entry.unit}
+      max={entry.max}
+      value={crossing[entry.field] as number}
+      onChange={(next) => onChange({ [entry.field]: next } as CrossingPatch)}
+      onSpawn={manualSpawnRef ? () => requestSpawn(entry.spawnKind) : undefined}
+    />
+  );
 
   return (
     <>
-      {points.map((point) => (
-        <IntensityInput
-          key={point.key}
-          x={point.x}
-          z={point.z}
-          label={LABEL[point.key]}
-          unit={UNIT[point.key]}
-          max={2000}
-          value={crossing[FIELD[point.key]] as number}
-          onChange={(next) => onChange({ [FIELD[point.key]]: next } as CrossingPatch)}
-        />
-      ))}
-      {transit.map((point) => (
-        <IntensityInput
-          key={point.key}
-          x={point.x}
-          z={point.z}
-          label={point.label}
-          unit={point.unit}
-          max={point.max}
-          value={crossing[point.field] as number}
-          onChange={(next) => onChange({ [point.field]: next } as CrossingPatch)}
-        />
-      ))}
+      {forward.map((entry, i) => renderEntry(entry, forwardPos[i]))}
+      {backward.map((entry, i) => renderEntry(entry, backwardPos[i]))}
+      {renderEntry(pedLeft, { x: sidewalkX(geo, "left"), z: 0 })}
+      {renderEntry(pedRight, { x: sidewalkX(geo, "right"), z: 0 })}
     </>
   );
 }

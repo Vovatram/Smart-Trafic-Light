@@ -14,7 +14,7 @@ import type { ReplayFrame } from "./replay";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 import { SignalStatusBadge } from "./SignalStatusBadge";
-import { TrafficSimulation, type PedCountRefs } from "./TrafficSimulation";
+import { TrafficSimulation, type PedCountRefs, type SpawnKind } from "./TrafficSimulation";
 
 export type ViewName = "perspective" | "top" | "along" | "side";
 
@@ -114,6 +114,7 @@ export function SceneView({
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const pedCounts = useRef<PedCountRefs>({ pedLeft: null, pedRight: null });
+  const manualSpawn = useRef<Set<SpawnKind>>(new Set());
   const roadLength = crossing?.road_length ?? 40;
   // useMemo — принципиально: без него target ниже была бы новым массивом на
   // каждый ре-рендер SceneView (а он перерисовывается от любой мелочи —
@@ -216,9 +217,10 @@ export function SceneView({
             selectedSensorIds={selectedDeviceIds}
             replay={replay}
             pedCountRef={pedCounts}
+            manualSpawnRef={manualSpawn}
           />
           {generationMode && onChangeCrossing && (
-            <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />
+            <GenerationBadges crossing={crossing} onChange={onChangeCrossing} manualSpawnRef={manualSpawn} />
           )}
         </>
       )}

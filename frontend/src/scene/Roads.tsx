@@ -17,6 +17,8 @@ interface Box {
   z: number;
   sx: number;
   sz: number;
+  /** поворот вокруг Y (рад.) — нужен для диагональных сегментов (напр. "ломаной" у остановки) */
+  rot?: number;
 }
 
 const ASPHALT = "#23262d";
@@ -26,7 +28,7 @@ const BIKE_LANE_COLOR = "#1f4d38";
 const BIKE_LANE_STRIPE = "#8fe3b8";
 const BUS_LANE_TINT = "#3a2420";
 const TRAM_RAIL = "#9aa3ad";
-const STOP_PLATFORM = "#5b6472";
+const STOP_ZIGZAG = "#eab308";
 
 function InstancedBoxes({
   items,
@@ -45,9 +47,15 @@ function InstancedBoxes({
     const mesh = ref.current;
     if (!mesh) return;
     const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    const upAxis = new THREE.Vector3(0, 1, 0);
     items.forEach((box, index) => {
-      matrix.makeScale(box.sx, height, box.sz);
-      matrix.setPosition(box.x, y, box.z);
+      position.set(box.x, y, box.z);
+      quaternion.setFromAxisAngle(upAxis, box.rot ?? 0);
+      scale.set(box.sx, height, box.sz);
+      matrix.compose(position, quaternion, scale);
       mesh.setMatrixAt(index, matrix);
     });
     mesh.count = items.length;
@@ -122,6 +130,34 @@ function useMarkings(crossing: Crossing): Box[] {
 }
 
 const TRAM_GAUGE = 0.9; // расстояние между "рельсами" — чисто визуальное, не настоящая колея
+const ZIGZAG_AMPLITUDE = 0.7; // насколько зигзаг уходит вбок от центра полосы
+const ZIGZAG_TEETH = 6; // сколько "зубцов" укладывается в STOP_MARKER_LENGTH
+const ZIGZAG_THICKNESS = 0.14;
+
+/** Разметка остановки — не сплошной блок, а жёлтая ломаная линия вдоль полосы (как в жизни). */
+function zigzagLine(centerX: number, centerZ: number, length: number): Box[] {
+  const half = length / 2;
+  const step = length / ZIGZAG_TEETH;
+  const points: { x: number; z: number }[] = [];
+  for (let i = 0; i <= ZIGZAG_TEETH; i += 1) {
+    points.push({ x: centerX + (i % 2 === 0 ? -ZIGZAG_AMPLITUDE : ZIGZAG_AMPLITUDE), z: centerZ - half + i * step });
+  }
+  const segments: Box[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    segments.push({
+      x: (a.x + b.x) / 2,
+      z: (a.z + b.z) / 2,
+      sx: ZIGZAG_THICKNESS,
+      sz: Math.hypot(dx, dz),
+      rot: Math.atan2(dx, dz),
+    });
+  }
+  return segments;
+}
 
 function useTransitOverlays(crossing: Crossing) {
   return useMemo(() => {
@@ -161,7 +197,7 @@ function useTransitOverlays(crossing: Crossing) {
     const stops: Box[] = [];
     const pushStop = (dir: "forward" | "backward", lane: number, position: Crossing["tram_stop_forward"]) => {
       const p = stopMarkerPosition(geo, dir, lane, position);
-      if (p) stops.push({ x: p.x, z: p.z, sx: w * 0.6, sz: STOP_MARKER_LENGTH });
+      if (p) stops.push(...zigzagLine(p.x, p.z, STOP_MARKER_LENGTH));
     };
     if (geo.hasTramForward) pushStop("forward", tramLaneIndex(), geo.tramStopForward);
     if (geo.hasTramBackward) pushStop("backward", tramLaneIndex(), geo.tramStopBackward);
@@ -236,7 +272,7 @@ export function Roads({
       <InstancedBoxes items={zebra} color={ZEBRA} y={0.021} />
       <InstancedBoxes items={transit.bikeStripes} color={BIKE_LANE_STRIPE} y={0.022} />
       <InstancedBoxes items={transit.tramRails} color={TRAM_RAIL} y={0.03} height={0.04} />
-      <InstancedBoxes items={transit.stops} color={STOP_PLATFORM} y={0.08} height={0.16} />
+      <InstancedBoxes items={transit.stops} color={STOP_ZIGZAG} y={0.023} height={0.02} />
     </group>
   );
 }
