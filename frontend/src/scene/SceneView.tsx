@@ -185,6 +185,8 @@ export function SceneView({
             crossing={crossing}
             vehicleLabel={vehicleStatusLabel}
             pedestrianLabel={pedestrianStatusLabel}
+            vehicleSignal={vehicleSignal}
+            pedestrianSignal={pedestrianSignal}
           />
           <ItsDevices
             crossing={crossing}
@@ -199,6 +201,7 @@ export function SceneView({
             pedestrianSignal={pedestrianSignal}
             onPedestrianWaiting={onPedestrianWaiting}
             showCounts={showTrafficCounts}
+            selectedSensorIds={selectedDeviceIds}
           />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />

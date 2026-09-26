@@ -76,6 +76,7 @@ class Crossing(Base):
         CheckConstraint("all_red_after_peds_s between 1 and 15", name="ck_all_red_after_peds"),
         CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
         CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
+        CheckConstraint("log_retention_hours between 1 and 720", name="ck_log_retention"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -122,6 +123,11 @@ class Crossing(Base):
     all_red_after_peds_s: Mapped[float] = mapped_column(Float, default=3.0)
     button_min_green_s: Mapped[float] = mapped_column(Float, default=15.0)
     button_peds_s: Mapped[float] = mapped_column(Float, default=15.0)
+
+    # сколько часов хранить журнал (SignalLogEntry) и снимки интенсивности
+    # (TrafficMetricSnapshot) для этого перехода — старше этого возраста
+    # запись при следующей вставке удаляется
+    log_retention_hours: Mapped[float] = mapped_column(Float, default=24.0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -211,3 +217,44 @@ class SignalCycle(Base):
     crossing: Mapped[Crossing] = relationship(
         back_populates="cycles", foreign_keys=[crossing_id]
     )
+
+
+class SignalLogEntry(Base):
+    """Строка журнала: смена режима/фазы светофора либо запись по датчику.
+
+    device_id NULL — запись про сам переход (смена режима управления или
+    активного сигнала); device_id заполнен — запись про конкретный ИТС-
+    объект (изменение параметров, снимок числа объектов в зоне обзора).
+    Клиент сам решает, когда писать строку (клиентский автомат фаз), сервер
+    просто хранит и подчищает по log_retention_hours.
+    """
+
+    __tablename__ = "signal_log_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    crossing_id: Mapped[int] = mapped_column(
+        ForeignKey("crossings.id", ondelete="CASCADE"), index=True
+    )
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("its_devices.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    mode: Mapped[SignalMode | None] = mapped_column(signal_mode_enum, nullable=True)
+    active_signal: Mapped[str | None] = mapped_column(String(1), nullable=True)  # "П" или "А"
+    description: Mapped[str] = mapped_column(String(256), default="")
+
+
+class TrafficMetricSnapshot(Base):
+    """Периодический снимок живых счётчиков потока — для графиков интенсивности."""
+
+    __tablename__ = "traffic_metric_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    crossing_id: Mapped[int] = mapped_column(
+        ForeignKey("crossings.id", ondelete="CASCADE"), index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    forward_count: Mapped[int] = mapped_column(Integer, default=0)
+    backward_count: Mapped[int] = mapped_column(Integer, default=0)
+    ped_left_count: Mapped[int] = mapped_column(Integer, default=0)
+    ped_right_count: Mapped[int] = mapped_column(Integer, default=0)

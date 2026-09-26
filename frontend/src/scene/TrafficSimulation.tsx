@@ -307,6 +307,7 @@ export function TrafficSimulation({
   pedestrianSignal,
   onPedestrianWaiting,
   showCounts,
+  selectedSensorIds,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
@@ -316,9 +317,18 @@ export function TrafficSimulation({
   onPedestrianWaiting?: () => void;
   /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
   showCounts?: boolean;
+  /** если не пусто — показываются только машины/пешеходы, видимые ЭТИМ(и) датчиком(ами) */
+  selectedSensorIds?: ReadonlySet<number>;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
-  const sensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
+  const allSensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
+  const sensors = useMemo(
+    () =>
+      selectedSensorIds && selectedSensorIds.size > 0
+        ? allSensors.filter((d) => selectedSensorIds.has(d.id))
+        : allSensors,
+    [allSensors, selectedSensorIds],
+  );
   const stopZ = geo.crossingHalf + geo.stopOffset;
 
   const cars = useRef<Slot[]>(makePool(CAR_POOL));

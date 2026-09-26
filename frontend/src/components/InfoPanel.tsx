@@ -19,6 +19,7 @@ export function InfoPanel({
   crossing,
   onLanesForward,
   onLanesBackward,
+  onRoadLengthChange,
   busy,
   view,
   onView,
@@ -36,6 +37,7 @@ export function InfoPanel({
   crossing: Crossing | null;
   onLanesForward: (value: number) => void;
   onLanesBackward: (value: number) => void;
+  onRoadLengthChange: (value: number) => void;
   busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
@@ -82,6 +84,16 @@ export function InfoPanel({
               max={5}
               disabled={busy}
               onChange={onLanesBackward}
+            />
+            <Stepper
+              label="Длина дороги"
+              value={crossing.road_length}
+              unit=" м"
+              min={10}
+              max={200}
+              step={5}
+              disabled={busy}
+              onChange={onRoadLengthChange}
             />
           </div>
         )}

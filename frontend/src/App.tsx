@@ -78,6 +78,7 @@ export default function App() {
 
   const onLanesForward = useCallback((value: number) => patch({ lanes_forward: value }), [patch]);
   const onLanesBackward = useCallback((value: number) => patch({ lanes_backward: value }), [patch]);
+  const onRoadLengthChange = useCallback((value: number) => patch({ road_length: value }), [patch]);
 
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
@@ -261,20 +262,10 @@ export default function App() {
         showTrafficCounts={signalPanelOpen}
       />
 
-      <header className="pointer-events-none absolute top-4 left-4 z-10">
-        <h1 className="text-lg font-semibold text-slate-100">
-          SmartTrafficLight
-          {crossing ? <span className="text-slate-400"> · {crossing.name}</span> : null}
-        </h1>
-        <p className="text-xs text-slate-400">
-          пешеходный переход через дорогу — меняйте полосы, ставьте ИТС-объекты и смотрите с разных сторон
-        </p>
-      </header>
-
       {selectedDevice && (
         <aside
-          className="absolute top-24 left-4 z-10 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
-          style={{ maxHeight: "calc(100vh - 7rem)" }}
+          className="absolute top-4 left-4 z-10 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
+          style={{ maxHeight: "calc(100vh - 2rem)" }}
         >
           <DeviceEditor
             device={selectedDevice}
@@ -317,6 +308,7 @@ export default function App() {
           crossing={crossing}
           onLanesForward={onLanesForward}
           onLanesBackward={onLanesBackward}
+          onRoadLengthChange={onRoadLengthChange}
           busy={busy}
           view={view}
           onView={setView}

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Crossing, DeviceType, ItsDevice, SignalCycle
+from app.models import (
+    Crossing,
+    DeviceType,
+    ItsDevice,
+    SignalCycle,
+    SignalLogEntry,
+    TrafficMetricSnapshot,
+)
 from app.schemas import (
     CrossingBrief,
     CrossingIn,
@@ -18,6 +27,10 @@ from app.schemas import (
     SignalCycleIn,
     SignalCycleOut,
     SignalCycleUpdate,
+    SignalLogEntryIn,
+    SignalLogEntryOut,
+    TrafficMetricSnapshotIn,
+    TrafficMetricSnapshotOut,
 )
 
 router = APIRouter(prefix="/api", tags=["crossings"])
@@ -190,3 +203,87 @@ async def delete_signal_cycle(cycle_id: int, session: AsyncSession = Depends(get
     cycle = await _load_cycle(session, cycle_id)
     await session.delete(cycle)
     await session.commit()
+
+
+async def _prune_old(session: AsyncSession, crossing: Crossing) -> None:
+    """Удаляет журнал/снимки этого перехода старше log_retention_hours."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=crossing.log_retention_hours)
+    await session.execute(
+        delete(SignalLogEntry).where(
+            SignalLogEntry.crossing_id == crossing.id, SignalLogEntry.at < cutoff
+        )
+    )
+    await session.execute(
+        delete(TrafficMetricSnapshot).where(
+            TrafficMetricSnapshot.crossing_id == crossing.id, TrafficMetricSnapshot.at < cutoff
+        )
+    )
+
+
+@router.get("/crossings/{crossing_id}/logs", response_model=list[SignalLogEntryOut])
+async def list_logs(
+    crossing_id: int,
+    device_id: int | None = None,
+    limit: int = 500,
+    session: AsyncSession = Depends(get_session),
+):
+    await _load(session, crossing_id)
+    stmt = select(SignalLogEntry).where(SignalLogEntry.crossing_id == crossing_id)
+    # device_id не передан вовсе — вся история; device_id=0 — только записи
+    # уровня перехода (device_id IS NULL); иначе — записи конкретного датчика
+    if device_id == 0:
+        stmt = stmt.where(SignalLogEntry.device_id.is_(None))
+    elif device_id is not None:
+        stmt = stmt.where(SignalLogEntry.device_id == device_id)
+    stmt = stmt.order_by(SignalLogEntry.at.desc()).limit(min(limit, 2000))
+    result = await session.execute(stmt)
+    return list(result.scalars())[::-1]
+
+
+@router.post("/crossings/{crossing_id}/logs", response_model=SignalLogEntryOut, status_code=201)
+async def add_log_entry(
+    crossing_id: int, payload: SignalLogEntryIn, session: AsyncSession = Depends(get_session)
+):
+    crossing = await _load(session, crossing_id)
+    if payload.device_id is not None:
+        device = await session.get(ItsDevice, payload.device_id)
+        if device is None or device.crossing_id != crossing_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "объект не найден у этого перехода")
+    entry = SignalLogEntry(crossing_id=crossing_id, **payload.model_dump())
+    session.add(entry)
+    await _prune_old(session, crossing)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
+
+
+@router.get("/crossings/{crossing_id}/metrics", response_model=list[TrafficMetricSnapshotOut])
+async def list_metrics(
+    crossing_id: int,
+    limit: int = 1000,
+    session: AsyncSession = Depends(get_session),
+):
+    await _load(session, crossing_id)
+    stmt = (
+        select(TrafficMetricSnapshot)
+        .where(TrafficMetricSnapshot.crossing_id == crossing_id)
+        .order_by(TrafficMetricSnapshot.at.desc())
+        .limit(min(limit, 5000))
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars())[::-1]
+
+
+@router.post(
+    "/crossings/{crossing_id}/metrics", response_model=TrafficMetricSnapshotOut, status_code=201
+)
+async def add_metric_snapshot(
+    crossing_id: int, payload: TrafficMetricSnapshotIn, session: AsyncSession = Depends(get_session)
+):
+    crossing = await _load(session, crossing_id)
+    snapshot = TrafficMetricSnapshot(crossing_id=crossing_id, **payload.model_dump())
+    session.add(snapshot)
+    await _prune_old(session, crossing)
+    await session.commit()
+    await session.refresh(snapshot)
+    return snapshot

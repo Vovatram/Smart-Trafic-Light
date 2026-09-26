@@ -4,14 +4,15 @@ import { useMemo } from "react";
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 import { poles, roadGeometry } from "./layout";
 
-const VEHICLE_COLOR: Record<VehicleSignal, string> = {
+// экспортируются — SignalStatusBadge красит текст тем же цветом, что горит на лампе
+export const VEHICLE_COLOR: Record<VehicleSignal, string> = {
   red: "#f43f5e",
   yellow: "#facc15",
   green: "#22c55e",
 };
 const VEHICLE_ORDER: VehicleSignal[] = ["red", "yellow", "green"];
 
-const PEDESTRIAN_COLOR: Record<PedestrianSignal, string> = {
+export const PEDESTRIAN_COLOR: Record<PedestrianSignal, string> = {
   stop: "#f43f5e",
   walk: "#22c55e",
 };
@@ -22,17 +23,70 @@ const POLE_HEIGHT = 4.6;
 export const VEHICLE_HEAD_Y = 4.3;
 export const PEDESTRIAN_HEAD_Y = 2.5;
 
-function Lamp({ color, active, y }: { color: string; active: boolean; y: number }) {
+const HOUSING_DEPTH = 0.12; // современные светофоры — тонкая плоская панель, не глубокий короб
+const LAMP_Z = HOUSING_DEPTH / 2 + 0.01;
+
+/** Плоский круглый сигнал — как на современных LED-светофорах (не лампа-шар). */
+function FlatLamp({ color, active, y }: { color: string; active: boolean; y: number }) {
   return (
-    <mesh position={[0, y, 0.2]}>
-      <sphereGeometry args={[0.15, 16, 12]} />
+    <mesh position={[0, y, LAMP_Z]}>
+      <circleGeometry args={[0.15, 24]} />
       <meshStandardMaterial
         color={active ? color : "#1f2430"}
         emissive={active ? color : "#000000"}
-        emissiveIntensity={active ? 2.2 : 0}
-        roughness={0.4}
+        emissiveIntensity={active ? 2.4 : 0}
+        roughness={0.35}
       />
     </mesh>
+  );
+}
+
+/**
+ * Плоская пиктограмма человечка — как на современных пешеходных
+ * светофорах: "стоп" — фигура стоит прямо, ноги вместе; "идите" — в
+ * движении, ноги в шаге, руки отведены. Собрана из тонких плоских боксов.
+ */
+function PersonIcon({
+  walking,
+  color,
+  active,
+  y,
+}: {
+  walking: boolean;
+  color: string;
+  active: boolean;
+  y: number;
+}) {
+  const mat = active ? color : "#1f2430";
+  const emissive = active ? color : "#000000";
+  const depth = 0.02;
+
+  const parts: Array<{ x: number; y: number; w: number; h: number; rot?: number }> = walking
+    ? [
+        { x: 0, y: 0.135, w: 0.07, h: 0.07 }, // голова
+        { x: 0.005, y: 0.03, w: 0.09, h: 0.13, rot: 0.15 }, // торс, чуть наклонён вперёд
+        { x: -0.11, y: 0.06, w: 0.1, h: 0.035, rot: 0.5 }, // рука назад
+        { x: 0.1, y: 0.08, w: 0.1, h: 0.035, rot: -0.6 }, // рука вперёд
+        { x: -0.06, y: -0.09, w: 0.09, h: 0.04, rot: -0.5 }, // нога назад
+        { x: 0.07, y: -0.1, w: 0.11, h: 0.04, rot: 0.45 }, // нога вперёд, широкий шаг
+      ]
+    : [
+        { x: 0, y: 0.135, w: 0.07, h: 0.07 }, // голова
+        { x: 0, y: 0.03, w: 0.08, h: 0.14 }, // торс прямо
+        { x: -0.055, y: 0.04, w: 0.03, h: 0.1 }, // рука вдоль тела
+        { x: 0.055, y: 0.04, w: 0.03, h: 0.1 }, // рука вдоль тела
+        { x: 0, y: -0.1, w: 0.05, h: 0.14 }, // ноги вместе
+      ];
+
+  return (
+    <group position={[0, y, LAMP_Z]}>
+      {parts.map((p, i) => (
+        <mesh key={i} position={[p.x, p.y, 0]} rotation={[0, 0, p.rot ?? 0]}>
+          <boxGeometry args={[p.w, p.h, depth]} />
+          <meshStandardMaterial color={mat} emissive={emissive} emissiveIntensity={active ? 1.6 : 0} roughness={0.4} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -60,11 +114,11 @@ function VehicleHead({
       onPointerOut={() => (document.body.style.cursor = "auto")}
     >
       <mesh castShadow>
-        <boxGeometry args={[0.42, 1.15, 0.3]} />
-        <meshStandardMaterial color="#111520" roughness={0.7} />
+        <boxGeometry args={[0.42, 1.15, HOUSING_DEPTH]} />
+        <meshStandardMaterial color="#111520" roughness={0.5} metalness={0.2} />
       </mesh>
       {VEHICLE_ORDER.map((lamp, index) => (
-        <Lamp key={lamp} color={VEHICLE_COLOR[lamp]} active={state === lamp} y={0.38 - index * 0.38} />
+        <FlatLamp key={lamp} color={VEHICLE_COLOR[lamp]} active={state === lamp} y={0.38 - index * 0.38} />
       ))}
     </group>
   );
@@ -94,11 +148,11 @@ function PedestrianHead({
       onPointerOut={() => (document.body.style.cursor = "auto")}
     >
       <mesh castShadow>
-        <boxGeometry args={[0.36, 0.62, 0.26]} />
-        <meshStandardMaterial color="#111520" roughness={0.7} />
+        <boxGeometry args={[0.36, 0.62, HOUSING_DEPTH]} />
+        <meshStandardMaterial color="#111520" roughness={0.5} metalness={0.2} />
       </mesh>
-      <Lamp color={PEDESTRIAN_COLOR.stop} active={state === "stop"} y={0.16} />
-      <Lamp color={PEDESTRIAN_COLOR.walk} active={state === "walk"} y={-0.16} />
+      <PersonIcon walking={false} color={PEDESTRIAN_COLOR.stop} active={state === "stop"} y={0.16} />
+      <PersonIcon walking color={PEDESTRIAN_COLOR.walk} active={state === "walk"} y={-0.16} />
     </group>
   );
 }

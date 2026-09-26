@@ -52,6 +52,7 @@ class CrossingUpdate(BaseModel):
     all_red_after_peds_s: float | None = Field(default=None, ge=1, le=15)
     button_min_green_s: float | None = Field(default=None, ge=3, le=180)
     button_peds_s: float | None = Field(default=None, ge=3, le=120)
+    log_retention_hours: float | None = Field(default=None, ge=1, le=720)
 
 
 class ItsDeviceIn(BaseModel):
@@ -157,6 +158,7 @@ class CrossingOut(BaseModel):
     all_red_after_peds_s: float
     button_min_green_s: float
     button_peds_s: float
+    log_retention_hours: float
     created_at: datetime
     its_devices: list[ItsDeviceOut]
     cycles: list[SignalCycleOut]
@@ -168,3 +170,39 @@ class CrossingBrief(BaseModel):
     id: int
     slug: str
     name: str
+
+
+class SignalLogEntryIn(BaseModel):
+    device_id: int | None = None
+    mode: SignalMode | None = None
+    active_signal: str | None = Field(default=None, min_length=1, max_length=1, pattern=r"^[ПА]$")
+    description: str = Field(default="", max_length=256)
+
+
+class SignalLogEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    device_id: int | None
+    at: datetime
+    mode: SignalMode | None
+    active_signal: str | None
+    description: str
+
+
+class TrafficMetricSnapshotIn(BaseModel):
+    forward_count: int = Field(default=0, ge=0)
+    backward_count: int = Field(default=0, ge=0)
+    ped_left_count: int = Field(default=0, ge=0)
+    ped_right_count: int = Field(default=0, ge=0)
+
+
+class TrafficMetricSnapshotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    at: datetime
+    forward_count: int
+    backward_count: int
+    ped_left_count: int
+    ped_right_count: int
