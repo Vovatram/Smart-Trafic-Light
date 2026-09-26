@@ -30,6 +30,9 @@ export function InfoPanel({
   placingType,
   onStartPlacing,
   onStopPlacing,
+  generationMode,
+  onStartGeneration,
+  onStopGeneration,
 }: {
   crossings: CrossingBrief[];
   selectedId: number | null;
@@ -45,6 +48,9 @@ export function InfoPanel({
   placingType: DeviceType | null;
   onStartPlacing: (type: DeviceType) => void;
   onStopPlacing: () => void;
+  generationMode: boolean;
+  onStartGeneration: () => void;
+  onStopGeneration: () => void;
 }) {
   return (
     <>
@@ -182,6 +188,32 @@ export function InfoPanel({
                   изменить параметры или удалить.
                 </p>
               )}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {crossing && (
+        <Card title="Генерация потока">
+          {generationMode ? (
+            <div className="space-y-2">
+              <p className="text-[11px] leading-snug text-slate-500">
+                Плашки на сцене — число машин/пешеходов в час для каждого из 4 начал потока.
+                Введите значение и уберите фокус с поля, чтобы сохранить.
+              </p>
+              <Button className="w-full" onClick={onStopGeneration}>
+                Готово
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-[11px] leading-snug text-slate-500">
+                Машины едут только на зелёный, пешеходы — только на «идите», и видны только там,
+                где их застаёт зона обзора камеры или датчика.
+              </p>
+              <Button className="w-full" disabled={busy} onClick={onStartGeneration}>
+                Настроить интенсивность
+              </Button>
             </div>
           )}
         </Card>

@@ -56,6 +56,10 @@ class Crossing(Base):
         CheckConstraint("lane_width > 0", name="ck_lane_width"),
         CheckConstraint("road_length > 0", name="ck_road_length"),
         CheckConstraint("crossing_width > 0", name="ck_crossing_width"),
+        CheckConstraint("vph_forward between 0 and 2000", name="ck_vph_forward"),
+        CheckConstraint("vph_backward between 0 and 2000", name="ck_vph_backward"),
+        CheckConstraint("peds_left_vph between 0 and 2000", name="ck_peds_left"),
+        CheckConstraint("peds_right_vph between 0 and 2000", name="ck_peds_right"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -67,6 +71,13 @@ class Crossing(Base):
     lanes_backward: Mapped[int] = mapped_column(Integer, default=2)
     road_length: Mapped[float] = mapped_column(Float, default=40.0)
     crossing_width: Mapped[float] = mapped_column(Float, default=3.0)
+
+    # процедурная генерация потока: машин/пешеходов в час, отдельно на
+    # каждое из 4 "начал" — оба конца дороги и обе обочины перехода
+    vph_forward: Mapped[float] = mapped_column(Float, default=300.0)
+    vph_backward: Mapped[float] = mapped_column(Float, default=300.0)
+    peds_left_vph: Mapped[float] = mapped_column(Float, default=120.0)
+    peds_right_vph: Mapped[float] = mapped_column(Float, default=120.0)
 
     vehicle_signal: Mapped[VehicleSignal] = mapped_column(
         vehicle_signal_enum, default=VehicleSignal.GREEN

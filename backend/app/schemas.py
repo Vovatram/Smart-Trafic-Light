@@ -21,6 +21,10 @@ class CrossingIn(BaseModel):
     lanes_backward: int = Field(default=2, ge=0, le=5)
     road_length: float = Field(default=40.0, ge=10.0, le=200.0)
     crossing_width: float = Field(default=3.0, ge=1.5, le=8.0)
+    vph_forward: float = Field(default=300.0, ge=0, le=2000)
+    vph_backward: float = Field(default=300.0, ge=0, le=2000)
+    peds_left_vph: float = Field(default=120.0, ge=0, le=2000)
+    peds_right_vph: float = Field(default=120.0, ge=0, le=2000)
 
     @model_validator(mode="after")
     def check_lanes(self) -> "CrossingIn":
@@ -38,6 +42,10 @@ class CrossingUpdate(BaseModel):
     crossing_width: float | None = Field(default=None, ge=1.5, le=8.0)
     vehicle_signal: VehicleSignal | None = None
     pedestrian_signal: PedestrianSignal | None = None
+    vph_forward: float | None = Field(default=None, ge=0, le=2000)
+    vph_backward: float | None = Field(default=None, ge=0, le=2000)
+    peds_left_vph: float | None = Field(default=None, ge=0, le=2000)
+    peds_right_vph: float | None = Field(default=None, ge=0, le=2000)
 
 
 class ItsDeviceIn(BaseModel):
@@ -112,6 +120,10 @@ class CrossingOut(BaseModel):
     crossing_width: float
     vehicle_signal: VehicleSignal
     pedestrian_signal: PedestrianSignal
+    vph_forward: float
+    vph_backward: float
+    peds_left_vph: float
+    peds_right_vph: float
     created_at: datetime
     its_devices: list[ItsDeviceOut]
 

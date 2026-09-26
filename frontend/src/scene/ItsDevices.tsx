@@ -3,6 +3,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
 import type { Crossing, DeviceType, ItsDevice } from "../types";
+import { colorForDevice } from "./deviceColors";
 
 const DEG2RAD = Math.PI / 180;
 const POLE_COLOR = "#3b4252";
@@ -32,7 +33,15 @@ function FovWedge({ halfAngleDeg, length, color }: { halfAngleDeg: number; lengt
   );
 }
 
-function CameraHead({ device, showWedge }: { device: ItsDevice; showWedge: boolean }) {
+function CameraHead({
+  device,
+  color,
+  showWedge,
+}: {
+  device: ItsDevice;
+  color: string;
+  showWedge: boolean;
+}) {
   return (
     <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
       <mesh castShadow>
@@ -45,20 +54,24 @@ function CameraHead({ device, showWedge }: { device: ItsDevice; showWedge: boole
       </mesh>
       <mesh position={[0, 0.16, 0.21]}>
         <sphereGeometry args={[0.03, 8, 8]} />
-        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.5} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} />
       </mesh>
       {showWedge && (
-        <FovWedge
-          halfAngleDeg={(device.fov_deg ?? 60) / 2}
-          length={device.view_radius ?? 35}
-          color="#facc15"
-        />
+        <FovWedge halfAngleDeg={(device.fov_deg ?? 60) / 2} length={device.view_radius ?? 35} color={color} />
       )}
     </group>
   );
 }
 
-function MicrowaveHead({ device, showWedge }: { device: ItsDevice; showWedge: boolean }) {
+function MicrowaveHead({
+  device,
+  color,
+  showWedge,
+}: {
+  device: ItsDevice;
+  color: string;
+  showWedge: boolean;
+}) {
   return (
     <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
       <mesh castShadow>
@@ -67,14 +80,10 @@ function MicrowaveHead({ device, showWedge }: { device: ItsDevice; showWedge: bo
       </mesh>
       <mesh position={[0, 0, 0.13]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.11, 0.02, 8, 16]} />
-        <meshStandardMaterial color="#a78bfa" emissive="#a78bfa" emissiveIntensity={0.6} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} />
       </mesh>
       {showWedge && (
-        <FovWedge
-          halfAngleDeg={(device.fov_deg ?? 25) / 2}
-          length={device.view_radius ?? 18}
-          color="#38bdf8"
-        />
+        <FovWedge halfAngleDeg={(device.fov_deg ?? 25) / 2} length={device.view_radius ?? 18} color={color} />
       )}
     </group>
   );
@@ -82,11 +91,13 @@ function MicrowaveHead({ device, showWedge }: { device: ItsDevice; showWedge: bo
 
 function PoleDevice({
   device,
+  color,
   selectable,
   showWedge,
   onSelect,
 }: {
   device: ItsDevice;
+  color: string;
   selectable: boolean;
   showWedge: boolean;
   onSelect: (id: number) => void;
@@ -110,9 +121,9 @@ function PoleDevice({
       </mesh>
       <group position={[0, height, 0]}>
         {device.device_type === "camera" ? (
-          <CameraHead device={device} showWedge={showWedge} />
+          <CameraHead device={device} color={color} showWedge={showWedge} />
         ) : (
-          <MicrowaveHead device={device} showWedge={showWedge} />
+          <MicrowaveHead device={device} color={color} showWedge={showWedge} />
         )}
       </group>
     </group>
@@ -121,10 +132,12 @@ function PoleDevice({
 
 function LoopDevice({
   device,
+  color,
   selectable,
   onSelect,
 }: {
   device: ItsDevice;
+  color: string;
   selectable: boolean;
   onSelect: (id: number) => void;
 }) {
@@ -141,7 +154,7 @@ function LoopDevice({
       onPointerOver={() => selectable && (document.body.style.cursor = "pointer")}
       onPointerOut={() => (document.body.style.cursor = "auto")}
     >
-      <LoopOutline size={size} color="#22d3ee" fillOpacity={0.1} />
+      <LoopOutline size={size} color={color} fillOpacity={0.1} />
     </group>
   );
 }
@@ -183,19 +196,21 @@ export function ItsDevices({
 }) {
   return (
     <group>
-      {crossing.its_devices.map((device) =>
-        device.device_type === "loop" ? (
-          <LoopDevice key={device.id} device={device} selectable={selectable} onSelect={onSelect} />
+      {crossing.its_devices.map((device) => {
+        const color = colorForDevice(crossing.its_devices, device.id);
+        return device.device_type === "loop" ? (
+          <LoopDevice key={device.id} device={device} color={color} selectable={selectable} onSelect={onSelect} />
         ) : (
           <PoleDevice
             key={device.id}
             device={device}
+            color={color}
             selectable={selectable}
             showWedge={device.id === editingId}
             onSelect={onSelect}
           />
-        ),
-      )}
+        );
+      })}
     </group>
   );
 }

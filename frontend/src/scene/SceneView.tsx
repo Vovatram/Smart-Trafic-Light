@@ -6,11 +6,13 @@ import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
-import type { Crossing, DeviceType } from "../types";
+import type { Crossing, CrossingPatch, DeviceType } from "../types";
+import { GenerationBadges } from "./GenerationBadges";
 import { ItsDevices, PlacementGhost } from "./ItsDevices";
 import { clampPlacement, clampToRoad, roadGeometry } from "./layout";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
+import { TrafficSimulation } from "./TrafficSimulation";
 
 export type ViewName = "perspective" | "top" | "along" | "side";
 
@@ -71,6 +73,8 @@ export function SceneView({
   onPlace,
   editingId,
   onSelectDevice,
+  generationMode,
+  onChangeCrossing,
 }: {
   crossing: Crossing | null;
   view: ViewName;
@@ -78,6 +82,8 @@ export function SceneView({
   onPlace?: (x: number, z: number) => void;
   editingId?: number | null;
   onSelectDevice?: (id: number) => void;
+  generationMode?: boolean;
+  onChangeCrossing?: (patch: CrossingPatch) => void;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
@@ -142,6 +148,10 @@ export function SceneView({
             onSelect={onSelectDevice ?? (() => {})}
           />
           {placingType && hover && <PlacementGhost type={placingType} x={hover[0]} z={hover[1]} />}
+          <TrafficSimulation crossing={crossing} />
+          {generationMode && onChangeCrossing && (
+            <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />
+          )}
         </>
       )}
 

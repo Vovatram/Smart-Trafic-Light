@@ -15,6 +15,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [placingType, setPlacingType] = useState<DeviceType | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
+  const [generationMode, setGenerationMode] = useState(false);
 
   useEffect(() => {
     api
@@ -77,9 +78,18 @@ export default function App() {
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
     setSelectedDeviceId(null);
+    setGenerationMode(false);
     setView("top");
   }, []);
   const onStopPlacing = useCallback(() => setPlacingType(null), []);
+
+  const onStartGeneration = useCallback(() => {
+    setGenerationMode(true);
+    setPlacingType(null);
+    setSelectedDeviceId(null);
+    setView("top");
+  }, []);
+  const onStopGeneration = useCallback(() => setGenerationMode(false), []);
 
   const onPlace = useCallback(
     (x: number, z: number) => {
@@ -137,6 +147,8 @@ export default function App() {
         onPlace={onPlace}
         editingId={selectedDeviceId}
         onSelectDevice={onSelectDevice}
+        generationMode={generationMode}
+        onChangeCrossing={patch}
       />
 
       <header className="pointer-events-none absolute top-4 left-4 z-10">
@@ -177,6 +189,9 @@ export default function App() {
           placingType={placingType}
           onStartPlacing={onStartPlacing}
           onStopPlacing={onStopPlacing}
+          generationMode={generationMode}
+          onStartGeneration={onStartGeneration}
+          onStopGeneration={onStopGeneration}
         />
       </aside>
 

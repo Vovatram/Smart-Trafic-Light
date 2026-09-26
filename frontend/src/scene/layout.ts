@@ -32,6 +32,7 @@ export interface RoadGeometry {
 const POLE_OFFSET = 1.0; // отступ столба светофора от края проезжей части
 const STOP_OFFSET = 1.0; // отступ стоп-линии/столба от края перехода
 const PLACEMENT_PADDING = 12; // насколько дальше края дороги можно ставить объекты
+const SIDEWALK_OFFSET = 1.4; // отступ тротуара (старта пешехода) от края проезжей части
 
 export function roadGeometry(crossing: Crossing): RoadGeometry {
   const laneWidth = crossing.lane_width;
@@ -101,4 +102,37 @@ export function poles(geo: RoadGeometry): PoleSpec[] {
     });
   }
   return list;
+}
+
+/** Центр полосы для машины: индекс 0 — ближайшая к осевой (для левого поворота в старой схеме). */
+export function laneCenterX(geo: RoadGeometry, dir: "forward" | "backward", lane: number): number {
+  const offset = (lane + 0.5) * geo.laneWidth;
+  return dir === "forward" ? -offset : offset;
+}
+
+/** Отступ тротуара от края проезжей части — там же, где стоит "начало" пешеходного потока. */
+export function sidewalkX(geo: RoadGeometry, side: "left" | "right"): number {
+  return side === "left" ? geo.leftEdge - SIDEWALK_OFFSET : geo.rightEdge + SIDEWALK_OFFSET;
+}
+
+export type SpawnKey = "forward" | "backward" | "pedLeft" | "pedRight";
+
+export interface SpawnPoint {
+  key: SpawnKey;
+  x: number;
+  z: number;
+}
+
+/** 4 "начала" потоков — оба конца дороги (машины) и обе обочины перехода (пешеходы). */
+export function spawnPoints(geo: RoadGeometry): SpawnPoint[] {
+  const points: SpawnPoint[] = [];
+  if (geo.lanesForward > 0) {
+    points.push({ key: "forward", x: geo.leftEdge / 2, z: -geo.roadLength });
+  }
+  if (geo.lanesBackward > 0) {
+    points.push({ key: "backward", x: geo.rightEdge / 2, z: geo.roadLength });
+  }
+  points.push({ key: "pedLeft", x: sidewalkX(geo, "left"), z: 0 });
+  points.push({ key: "pedRight", x: sidewalkX(geo, "right"), z: 0 });
+  return points;
 }

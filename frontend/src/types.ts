@@ -36,6 +36,14 @@ export interface Crossing extends CrossingBrief {
   crossing_width: number;
   vehicle_signal: VehicleSignal;
   pedestrian_signal: PedestrianSignal;
+  /** машин/час, направление N (вперёд) */
+  vph_forward: number;
+  /** машин/час, направление K (назад) */
+  vph_backward: number;
+  /** пешеходов/час, стартующих с левой обочины перехода */
+  peds_left_vph: number;
+  /** пешеходов/час, стартующих с правой обочины перехода */
+  peds_right_vph: number;
   created_at: string;
   its_devices: ItsDevice[];
 }
@@ -51,5 +59,9 @@ export type CrossingPatch = Partial<
     | "crossing_width"
     | "vehicle_signal"
     | "pedestrian_signal"
+    | "vph_forward"
+    | "vph_backward"
+    | "peds_left_vph"
+    | "peds_right_vph"
   >
 >;
