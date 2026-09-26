@@ -1,7 +1,7 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -103,7 +103,14 @@ export function SceneView({
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
-  const positions = viewPositions(roadLength);
+  // useMemo — принципиально: без него target ниже была бы новым массивом на
+  // каждый ре-рендер SceneView (а он перерисовывается от любой мелочи —
+  // правки полос, ИТС-объектов, генерации), и CameraPose воспринимала бы
+  // это как "выбрали новый вид", постоянно утаскивая камеру от свободного
+  // вращения мышью обратно к пресету. Камера должна ехать к пресету только
+  // когда реально сменили view (или геометрию — сменили переход).
+  const positions = useMemo(() => viewPositions(roadLength), [roadLength]);
+  const target = positions[view];
   const [hover, setHover] = useState<[number, number] | null>(null);
 
   const clampForPlacement = (px: number, pz: number): [number, number] => {
@@ -187,7 +194,7 @@ export function SceneView({
         </>
       )}
 
-      <CameraPose target={positions[view]} controls={controls} />
+      <CameraPose target={target} controls={controls} />
       <OrbitControls
         ref={controls}
         target={[0, 0, 0]}

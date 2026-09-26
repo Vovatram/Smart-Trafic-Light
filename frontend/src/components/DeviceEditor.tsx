@@ -107,9 +107,6 @@ export function DeviceEditor({
                 onCommit={(stream_url) => onChange({ stream_url: stream_url || null })}
               />
             )}
-            <p className="text-[11px] leading-snug text-slate-500">
-              Зона обзора показывается на сцене, пока идёт редактирование.
-            </p>
           </>
         )}
 

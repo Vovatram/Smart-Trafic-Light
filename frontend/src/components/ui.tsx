@@ -1,10 +1,38 @@
+import { useState } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export function Card({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * Сворачиваемая карточка сайдбара. По умолчанию управляет своим открытием
+ * сама (defaultOpen); передай open+onOpenChange, если открытие нужно
+ * дёргать снаружи (например, автораскрытие по клику на светофор в сцене).
+ */
+export function Card({
+  title,
+  children,
+  defaultOpen = true,
+  open,
+  onOpenChange,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isOpen = open ?? internalOpen;
+  const toggle = () => (onOpenChange ? onOpenChange(!isOpen) : setInternalOpen((o) => !o));
+
   return (
-    <section className="rounded-xl border border-slate-700/60 bg-slate-900/75 p-3 shadow-lg backdrop-blur-sm">
-      <h2 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">{title}</h2>
-      {children}
+    <section className="rounded-xl border border-slate-700/60 bg-slate-900/75 shadow-lg backdrop-blur-sm">
+      <button
+        onClick={toggle}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+      >
+        <h2 className="text-xs font-semibold tracking-wide text-slate-400 uppercase">{title}</h2>
+        <span className={`text-slate-500 transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+      </button>
+      {isOpen && <div className="space-y-3 px-3 pb-3">{children}</div>}
     </section>
   );
 }

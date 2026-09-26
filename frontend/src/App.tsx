@@ -4,7 +4,6 @@ import { api } from "./api/client";
 import { DeviceEditor } from "./components/DeviceEditor";
 import { InfoPanel } from "./components/InfoPanel";
 import { SignalModePanel } from "./components/SignalModePanel";
-import { SignalPicker } from "./components/SignalPicker";
 import { useSignalState } from "./hooks/useSignalState";
 import { SceneView, type ViewName } from "./scene/SceneView";
 import type {
@@ -26,7 +25,7 @@ export default function App() {
   const [placingType, setPlacingType] = useState<DeviceType | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [generationMode, setGenerationMode] = useState(false);
-  const [pickerKind, setPickerKind] = useState<"vehicle" | "pedestrian" | null>(null);
+  const [signalPanelOpen, setSignalPanelOpen] = useState(true);
 
   const { live, requestCall } = useSignalState(crossing);
 
@@ -111,10 +110,7 @@ export default function App() {
     [crossing, placingType, run],
   );
 
-  const onSelectDevice = useCallback((id: number) => {
-    setSelectedDeviceId(id);
-    setPickerKind(null);
-  }, []);
+  const onSelectDevice = useCallback((id: number) => setSelectedDeviceId(id), []);
 
   const onChangeDevice = useCallback(
     (id: number, devicePatch: Parameters<typeof api.updateItsDevice>[1]) => {
@@ -144,15 +140,16 @@ export default function App() {
     [run],
   );
 
-  // --- светофор: клик по лампе открывает пикер, выбор цвета переводит в ручной режим ---
-  const openVehiclePicker = useCallback(() => {
-    setPickerKind("vehicle");
+  // --- светофор: клик по лампе в сцене раскрывает панель режима и переводит в ручной ---
+  const focusSignalPanel = useCallback(() => {
+    setSignalPanelOpen(true);
     setSelectedDeviceId(null);
   }, []);
-  const openPedestrianPicker = useCallback(() => {
-    setPickerKind("pedestrian");
-    setSelectedDeviceId(null);
-  }, []);
+  const onClickVehicleLight = useCallback(() => {
+    focusSignalPanel();
+    patch({ signal_mode: "manual" });
+  }, [focusSignalPanel, patch]);
+  const onClickPedestrianLight = onClickVehicleLight;
   const onPickVehicle = useCallback(
     (value: VehicleSignal) => patch({ vehicle_signal: value, signal_mode: "manual" }),
     [patch],
@@ -237,8 +234,8 @@ export default function App() {
         pedestrianSignal={live.pedestrian}
         vehicleStatusLabel={vehicleStatusLabel}
         pedestrianStatusLabel={pedestrianStatusLabel}
-        onClickVehicleLight={openVehiclePicker}
-        onClickPedestrianLight={openPedestrianPicker}
+        onClickVehicleLight={onClickVehicleLight}
+        onClickPedestrianLight={onClickPedestrianLight}
         onPedestrianWaiting={requestCall}
       />
 
@@ -265,24 +262,16 @@ export default function App() {
             onClose={() => setSelectedDeviceId(null)}
           />
         )}
-        {pickerKind && crossing && (
-          <SignalPicker
-            kind={pickerKind}
-            vehicleValue={crossing.vehicle_signal}
-            pedestrianValue={crossing.pedestrian_signal}
-            isManual={crossing.signal_mode === "manual"}
-            busy={busy}
-            onPickVehicle={onPickVehicle}
-            onPickPedestrian={onPickPedestrian}
-            onClose={() => setPickerKind(null)}
-          />
-        )}
         {crossing && (
           <SignalModePanel
             crossing={crossing}
             busy={busy}
             callPending={live.callPending}
+            open={signalPanelOpen}
+            onOpenChange={setSignalPanelOpen}
             onSetMode={onSetMode}
+            onPickVehicle={onPickVehicle}
+            onPickPedestrian={onPickPedestrian}
             onSelectCycle={onSelectCycle}
             onAddCycle={onAddCycle}
             onDeleteCycle={onDeleteCycle}
@@ -306,6 +295,8 @@ export default function App() {
           placingType={placingType}
           onStartPlacing={onStartPlacing}
           onStopPlacing={onStopPlacing}
+          editingId={selectedDeviceId}
+          onSelectDevice={onSelectDevice}
           generationMode={generationMode}
           onStartGeneration={onStartGeneration}
           onStopGeneration={onStopGeneration}
