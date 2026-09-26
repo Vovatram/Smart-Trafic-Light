@@ -78,9 +78,11 @@ export function SceneView({
   onChangeCrossing,
   vehicleSignal,
   pedestrianSignal,
-  statusLabel,
+  vehicleStatusLabel,
+  pedestrianStatusLabel,
   onClickVehicleLight,
   onClickPedestrianLight,
+  onPedestrianWaiting,
 }: {
   crossing: Crossing | null;
   view: ViewName;
@@ -92,10 +94,12 @@ export function SceneView({
   onChangeCrossing?: (patch: CrossingPatch) => void;
   vehicleSignal: VehicleSignal;
   pedestrianSignal: PedestrianSignal;
-  /** "N с" / "АУ" над светофорами; "" — бейдж скрыт (ручной режим) */
-  statusLabel: string;
+  /** "N с" / "АУ" над автомобильным/пешеходным светофором; "" — скрыт (ручной режим) */
+  vehicleStatusLabel: string;
+  pedestrianStatusLabel: string;
   onClickVehicleLight?: () => void;
   onClickPedestrianLight?: () => void;
+  onPedestrianWaiting?: () => void;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
@@ -159,7 +163,11 @@ export function SceneView({
             onClickVehicle={onClickVehicleLight}
             onClickPedestrian={onClickPedestrianLight}
           />
-          <SignalStatusBadge crossing={crossing} label={statusLabel} />
+          <SignalStatusBadge
+            crossing={crossing}
+            vehicleLabel={vehicleStatusLabel}
+            pedestrianLabel={pedestrianStatusLabel}
+          />
           <ItsDevices
             crossing={crossing}
             selectable={!placingType}
@@ -167,7 +175,12 @@ export function SceneView({
             onSelect={onSelectDevice ?? (() => {})}
           />
           {placingType && hover && <PlacementGhost type={placingType} x={hover[0]} z={hover[1]} />}
-          <TrafficSimulation crossing={crossing} vehicleSignal={vehicleSignal} pedestrianSignal={pedestrianSignal} />
+          <TrafficSimulation
+            crossing={crossing}
+            vehicleSignal={vehicleSignal}
+            pedestrianSignal={pedestrianSignal}
+            onPedestrianWaiting={onPedestrianWaiting}
+          />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />
           )}

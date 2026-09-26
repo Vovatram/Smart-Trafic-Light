@@ -3,24 +3,49 @@ import { useMemo } from "react";
 
 import type { Crossing } from "../types";
 import { poles, roadGeometry } from "./layout";
+import { PEDESTRIAN_HEAD_Y, VEHICLE_HEAD_Y } from "./SignalMasts";
 
-const BADGE_Y = 5.6; // чуть выше автомобильной головы светофора
+const VEHICLE_BADGE_Y = VEHICLE_HEAD_Y + 0.9;
+const PEDESTRIAN_BADGE_Y = PEDESTRIAN_HEAD_Y + 0.6;
 
-/** "N сек до смены фазы" или "АУ" над каждым столбом — скрыт в ручном режиме. */
-export function SignalStatusBadge({ crossing, label }: { crossing: Crossing; label: string }) {
+function Badge({ x, y, z, value }: { x: number; y: number; z: number; value: string }) {
+  return (
+    <Html position={[x, y, z]} center>
+      <div className="rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-100 shadow-lg">
+        {value}
+      </div>
+    </Html>
+  );
+}
+
+/**
+ * Два числовых поля над каждым столбом — отдельно для автомобильного и
+ * пешеходного сигнала (у них разное расписание смены цвета). Пустая строка
+ * скрывает конкретное поле (так в ручном режиме, где расписания нет).
+ */
+export function SignalStatusBadge({
+  crossing,
+  vehicleLabel,
+  pedestrianLabel,
+}: {
+  crossing: Crossing;
+  vehicleLabel: string;
+  pedestrianLabel: string;
+}) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const items = useMemo(() => poles(geo), [geo]);
 
-  if (!label) return null;
+  if (!vehicleLabel && !pedestrianLabel) return null;
 
   return (
     <>
       {items.map((pole) => (
-        <Html key={pole.key} position={[pole.x, BADGE_Y, pole.z]} center>
-          <div className="rounded-full border border-slate-600 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-100 shadow-lg">
-            {label}
-          </div>
-        </Html>
+        <group key={pole.key}>
+          {vehicleLabel && <Badge x={pole.x} y={VEHICLE_BADGE_Y} z={pole.z} value={vehicleLabel} />}
+          {pedestrianLabel && (
+            <Badge x={pole.x} y={PEDESTRIAN_BADGE_Y} z={pole.z} value={pedestrianLabel} />
+          )}
+        </group>
       ))}
     </>
   );

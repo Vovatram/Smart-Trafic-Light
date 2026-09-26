@@ -3,19 +3,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 
 const TICK_MS = 200;
+const YELLOW_S = 3; // жёлтая фаза машинам перед переходом в красный — не настраивается
 
 export interface LiveSignal {
   vehicle: VehicleSignal;
   pedestrian: PedestrianSignal;
-  /** сколько секунд осталось до конца текущей фазы; null — нечего показывать */
-  secondsLeft: number | null;
-  /** "АУ" для адаптивного режима, иначе округлённые secondsLeft строкой; "" — бейдж скрыт */
-  label: string;
+  /** секунды до следующей смены автомобильного сигнала; null — нет расписания ("АУ") */
+  vehicleSecondsLeft: number | null;
+  /** то же самое для пешеходного */
+  pedestrianSecondsLeft: number | null;
+  /** "АУ" (нет расписания) / число секунд строкой / "" — бейдж скрыт (ручной режим) */
+  vehicleLabel: string;
+  pedestrianLabel: string;
   /** только режим "Кнопка": вызов нажат, ждём минимальный зелёный машинам */
   callPending: boolean;
 }
 
-type ButtonPhase = "cars" | "clear_to_peds" | "peds" | "clear_to_cars";
+type ButtonPhase = "cars" | "yellow" | "clear_to_peds" | "peds" | "clear_to_cars";
 
 interface ButtonState {
   phase: ButtonPhase;
@@ -23,42 +27,78 @@ interface ButtonState {
   callPending: boolean;
 }
 
+function label(seconds: number | null): string {
+  return seconds === null ? "АУ" : String(Math.ceil(seconds));
+}
+
 const IDLE: LiveSignal = {
   vehicle: "red",
   pedestrian: "stop",
-  secondsLeft: null,
-  label: "",
+  vehicleSecondsLeft: null,
+  pedestrianSecondsLeft: null,
+  vehicleLabel: "",
+  pedestrianLabel: "",
   callPending: false,
 };
 
-function cycleSignal(
+/**
+ * Цикл: зелёный машинам -> жёлтый -> красный всем -> зелёный пешеходам ->
+ * красный всем -> сначала. Две отдельных красных фазы: после машин (через
+ * жёлтый) и после пешеходов. Секунды считаются раздельно для каждого
+ * сигнала — до его СЛЕДУЮЩЕЙ смены цвета, а не до конца всей фазы: машины
+ * остаются красными на протяжении и "красный после машин", и "зелёный
+ * пешеходам", и "красный после пешеходов" разом.
+ */
+function cyclePhase(
   greenCarsS: number,
   allRedS: number,
   greenPedsS: number,
   t: number,
-): LiveSignal {
-  const gap1End = greenCarsS + allRedS;
-  const pedsEnd = gap1End + greenPedsS;
-  const total = pedsEnd + allRedS;
-  if (t < greenCarsS) {
-    return { vehicle: "green", pedestrian: "stop", secondsLeft: greenCarsS - t, label: "", callPending: false };
+): Omit<LiveSignal, "vehicleLabel" | "pedestrianLabel" | "callPending"> {
+  const p0 = greenCarsS; // конец зелёного машинам
+  const p1 = p0 + YELLOW_S; // конец жёлтого
+  const p2 = p1 + allRedS; // конец первого "красный всем"
+  const p3 = p2 + greenPedsS; // конец зелёного пешеходам
+  const total = p3 + allRedS; // конец второго "красный всем" = длина цикла
+
+  let vehicle: VehicleSignal;
+  let vehicleChangeAt: number;
+  if (t < p0) {
+    vehicle = "green";
+    vehicleChangeAt = p0;
+  } else if (t < p1) {
+    vehicle = "yellow";
+    vehicleChangeAt = p1;
+  } else {
+    vehicle = "red"; // остаётся красным через весь "красный/пешеходы/красный", до конца цикла
+    vehicleChangeAt = total;
   }
-  if (t < gap1End) {
-    return { vehicle: "red", pedestrian: "stop", secondsLeft: gap1End - t, label: "", callPending: false };
+
+  let pedestrian: PedestrianSignal;
+  let pedChangeAt: number;
+  if (t < p2) {
+    pedestrian = "stop";
+    pedChangeAt = p2;
+  } else if (t < p3) {
+    pedestrian = "walk";
+    pedChangeAt = p3;
+  } else {
+    pedestrian = "stop";
+    pedChangeAt = total;
   }
-  if (t < pedsEnd) {
-    return { vehicle: "red", pedestrian: "walk", secondsLeft: pedsEnd - t, label: "", callPending: false };
-  }
-  return { vehicle: "red", pedestrian: "stop", secondsLeft: total - t, label: "", callPending: false };
+
+  return {
+    vehicle,
+    pedestrian,
+    vehicleSecondsLeft: vehicleChangeAt - t,
+    pedestrianSecondsLeft: pedChangeAt - t,
+  };
 }
 
 /**
- * Живое состояние светофора перехода: в manual — просто то, что хранится в
- * БД (правится кликом по светофору); в остальных режимах считается на
- * клиенте каждые TICK_MS, без обращений к серверу. Тикер не зависит от
- * TrafficSimulation (та работает через useFrame внутри Canvas) — здесь
- * обычный React-хук, потому что светофору хватает точности ~200мс, а
- * бейдж и SignalMasts живут и вне, и внутри Canvas.
+ * Живое состояние светофора перехода: в manual — то, что хранится в БД
+ * (правится кликом по светофору); в остальных режимах считается на клиенте
+ * каждые TICK_MS, без обращений к серверу.
  */
 export function useSignalState(crossing: Crossing | null): {
   live: LiveSignal;
@@ -85,6 +125,9 @@ export function useSignalState(crossing: Crossing | null): {
   }, [modeKey]);
 
   const requestCall = useCallback(() => {
+    // не сбрасываем elapsed — минимальный зелёный учитывает и то, что машины
+    // ехали ДО нажатия: если уже 70с при минимуме 30, следующий тик сразу
+    // начнёт переключение (elapsed >= min уже выполнено)
     buttonRef.current.callPending = true;
   }, []);
 
@@ -99,23 +142,40 @@ export function useSignalState(crossing: Crossing | null): {
       return {
         vehicle: crossing.vehicle_signal,
         pedestrian: crossing.pedestrian_signal,
-        secondsLeft: null,
-        label: "",
+        vehicleSecondsLeft: null,
+        pedestrianSecondsLeft: null,
+        vehicleLabel: "",
+        pedestrianLabel: "",
         callPending: false,
       };
     }
 
     if (crossing.signal_mode === "adaptive") {
-      return { vehicle: "red", pedestrian: "walk", secondsLeft: null, label: "АУ", callPending: false };
+      return {
+        vehicle: "red",
+        pedestrian: "walk",
+        vehicleSecondsLeft: null,
+        pedestrianSecondsLeft: null,
+        vehicleLabel: "АУ",
+        pedestrianLabel: "АУ",
+        callPending: false,
+      };
     }
 
     if (crossing.signal_mode === "cycle") {
       const active = crossing.cycles.find((c) => c.id === crossing.active_cycle_id) ?? crossing.cycles[0];
-      if (!active) return { ...IDLE, label: "нет цикла" };
-      const total = active.green_cars_s + crossing.all_red_s * 2 + active.green_peds_s;
+      if (!active) {
+        return { ...IDLE, vehicleLabel: "нет цикла", pedestrianLabel: "нет цикла" };
+      }
+      const total = active.green_cars_s + YELLOW_S + active.green_peds_s + crossing.all_red_s * 2;
       const t = (performance.now() / 1000) % total;
-      const signal = cycleSignal(active.green_cars_s, crossing.all_red_s, active.green_peds_s, t);
-      return { ...signal, label: String(Math.ceil(signal.secondsLeft ?? 0)) };
+      const phase = cyclePhase(active.green_cars_s, crossing.all_red_s, active.green_peds_s, t);
+      return {
+        ...phase,
+        vehicleLabel: label(phase.vehicleSecondsLeft),
+        pedestrianLabel: label(phase.pedestrianSecondsLeft),
+        callPending: false,
+      };
     }
 
     // button
@@ -124,69 +184,133 @@ export function useSignalState(crossing: Crossing | null): {
     lastTickRef.current = now;
     const st = buttonRef.current;
     st.elapsed += dt;
+    const minGreen = crossing.button_min_green_s;
+    const pedsS = crossing.button_peds_s;
+    const allRedS = crossing.all_red_s;
 
-    if (st.phase === "cars") {
-      if (st.callPending && st.elapsed >= crossing.button_min_green_s) {
-        st.phase = "clear_to_peds";
-        st.elapsed = 0;
-        st.callPending = false;
-      } else {
-        const secondsLeft = st.callPending
-          ? Math.max(0, crossing.button_min_green_s - st.elapsed)
-          : null;
+    if (st.phase === "cars" && st.callPending && st.elapsed >= minGreen) {
+      st.phase = "yellow";
+      st.elapsed = 0;
+      st.callPending = false;
+    }
+
+    switch (st.phase) {
+      case "cars": {
+        const vehicleSecondsLeft = st.callPending ? Math.max(0, minGreen - st.elapsed) : null;
+        const pedestrianSecondsLeft =
+          vehicleSecondsLeft === null ? null : vehicleSecondsLeft + YELLOW_S + allRedS;
         return {
           vehicle: "green",
           pedestrian: "stop",
-          secondsLeft,
-          label: secondsLeft === null ? "" : String(Math.ceil(secondsLeft)),
+          vehicleSecondsLeft,
+          pedestrianSecondsLeft,
+          vehicleLabel: label(vehicleSecondsLeft),
+          pedestrianLabel: label(pedestrianSecondsLeft),
           callPending: st.callPending,
         };
       }
-    }
-    if (st.phase === "clear_to_peds") {
-      if (st.elapsed >= crossing.all_red_s) {
-        st.phase = "peds";
-        st.elapsed = 0;
-      } else {
-        const secondsLeft = crossing.all_red_s - st.elapsed;
+      case "yellow": {
+        if (st.elapsed >= YELLOW_S) {
+          st.phase = "clear_to_peds";
+          st.elapsed = 0;
+          return {
+            vehicle: "red",
+            pedestrian: "stop",
+            vehicleSecondsLeft: allRedS + pedsS + allRedS,
+            pedestrianSecondsLeft: allRedS,
+            vehicleLabel: label(allRedS + pedsS + allRedS),
+            pedestrianLabel: label(allRedS),
+            callPending: false,
+          };
+        }
+        const vehicleSecondsLeft = YELLOW_S - st.elapsed;
+        return {
+          vehicle: "yellow",
+          pedestrian: "stop",
+          vehicleSecondsLeft,
+          pedestrianSecondsLeft: vehicleSecondsLeft + allRedS,
+          vehicleLabel: label(vehicleSecondsLeft),
+          pedestrianLabel: label(vehicleSecondsLeft + allRedS),
+          callPending: false,
+        };
+      }
+      case "clear_to_peds": {
+        if (st.elapsed >= allRedS) {
+          st.phase = "peds";
+          st.elapsed = 0;
+          return {
+            vehicle: "red",
+            pedestrian: "walk",
+            vehicleSecondsLeft: pedsS + allRedS,
+            pedestrianSecondsLeft: pedsS,
+            vehicleLabel: label(pedsS + allRedS),
+            pedestrianLabel: label(pedsS),
+            callPending: false,
+          };
+        }
+        const pedestrianSecondsLeft = allRedS - st.elapsed;
         return {
           vehicle: "red",
           pedestrian: "stop",
-          secondsLeft,
-          label: String(Math.ceil(secondsLeft)),
+          vehicleSecondsLeft: pedestrianSecondsLeft + pedsS + allRedS,
+          pedestrianSecondsLeft,
+          vehicleLabel: label(pedestrianSecondsLeft + pedsS + allRedS),
+          pedestrianLabel: label(pedestrianSecondsLeft),
           callPending: false,
         };
       }
-    }
-    if (st.phase === "peds") {
-      if (st.elapsed >= crossing.button_peds_s) {
-        st.phase = "clear_to_cars";
-        st.elapsed = 0;
-      } else {
-        const secondsLeft = crossing.button_peds_s - st.elapsed;
+      case "peds": {
+        if (st.elapsed >= pedsS) {
+          st.phase = "clear_to_cars";
+          st.elapsed = 0;
+          return {
+            vehicle: "red",
+            pedestrian: "stop",
+            vehicleSecondsLeft: allRedS,
+            pedestrianSecondsLeft: null,
+            vehicleLabel: label(allRedS),
+            pedestrianLabel: "АУ",
+            callPending: false,
+          };
+        }
+        const pedestrianSecondsLeft = pedsS - st.elapsed;
         return {
           vehicle: "red",
           pedestrian: "walk",
-          secondsLeft,
-          label: String(Math.ceil(secondsLeft)),
+          vehicleSecondsLeft: pedestrianSecondsLeft + allRedS,
+          pedestrianSecondsLeft,
+          vehicleLabel: label(pedestrianSecondsLeft + allRedS),
+          pedestrianLabel: label(pedestrianSecondsLeft),
+          callPending: false,
+        };
+      }
+      case "clear_to_cars":
+      default: {
+        if (st.elapsed >= allRedS) {
+          st.phase = "cars";
+          st.elapsed = 0;
+          return {
+            vehicle: "green",
+            pedestrian: "stop",
+            vehicleSecondsLeft: null,
+            pedestrianSecondsLeft: null,
+            vehicleLabel: "АУ",
+            pedestrianLabel: "АУ",
+            callPending: false,
+          };
+        }
+        const vehicleSecondsLeft = allRedS - st.elapsed;
+        return {
+          vehicle: "red",
+          pedestrian: "stop",
+          vehicleSecondsLeft,
+          pedestrianSecondsLeft: null,
+          vehicleLabel: label(vehicleSecondsLeft),
+          pedestrianLabel: "АУ",
           callPending: false,
         };
       }
     }
-    // clear_to_cars
-    if (st.elapsed >= crossing.all_red_s) {
-      st.phase = "cars";
-      st.elapsed = 0;
-      return { vehicle: "green", pedestrian: "stop", secondsLeft: null, label: "", callPending: false };
-    }
-    const secondsLeft = crossing.all_red_s - st.elapsed;
-    return {
-      vehicle: "red",
-      pedestrian: "stop",
-      secondsLeft,
-      label: String(Math.ceil(secondsLeft)),
-      callPending: false,
-    };
     // tick растёт каждые TICK_MS — единственная причина пересчитывать это каждый интервал
   }, [crossing, tick]);
 

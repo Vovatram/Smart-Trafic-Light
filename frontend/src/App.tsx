@@ -207,12 +207,13 @@ export default function App() {
   );
 
   const selectedDevice = crossing?.its_devices.find((d) => d.id === selectedDeviceId) ?? null;
-  const statusLabel =
-    !crossing || crossing.signal_mode === "manual" || !live.label
-      ? ""
-      : live.label === "АУ"
-        ? "АУ"
-        : `${live.label} с`;
+
+  const formatBadge = (value: string): string => {
+    if (!crossing || crossing.signal_mode === "manual" || !value) return "";
+    return value === "АУ" ? "АУ" : `${value} с`;
+  };
+  const vehicleStatusLabel = formatBadge(live.vehicleLabel);
+  const pedestrianStatusLabel = formatBadge(live.pedestrianLabel);
 
   return (
     <div className="relative h-full w-full">
@@ -227,9 +228,11 @@ export default function App() {
         onChangeCrossing={patch}
         vehicleSignal={live.vehicle}
         pedestrianSignal={live.pedestrian}
-        statusLabel={statusLabel}
+        vehicleStatusLabel={vehicleStatusLabel}
+        pedestrianStatusLabel={pedestrianStatusLabel}
         onClickVehicleLight={openVehiclePicker}
         onClickPedestrianLight={openPedestrianPicker}
+        onPedestrianWaiting={requestCall}
       />
 
       <header className="pointer-events-none absolute top-4 left-4 z-10">

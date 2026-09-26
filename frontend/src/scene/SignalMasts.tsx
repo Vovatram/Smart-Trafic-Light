@@ -17,8 +17,10 @@ const PEDESTRIAN_COLOR: Record<PedestrianSignal, string> = {
 };
 
 const POLE_HEIGHT = 4.6;
-const VEHICLE_HEAD_Y = 4.3;
-const PEDESTRIAN_HEAD_Y = 2.5;
+// экспортируются — на них ориентируется SignalStatusBadge, чтобы поставить
+// бейджи именно над соответствующей головой, а не абы где на столбе
+export const VEHICLE_HEAD_Y = 4.3;
+export const PEDESTRIAN_HEAD_Y = 2.5;
 
 function Lamp({ color, active, y }: { color: string; active: boolean; y: number }) {
   return (

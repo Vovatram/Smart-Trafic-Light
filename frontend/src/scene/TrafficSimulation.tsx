@@ -7,7 +7,7 @@ import { detectingColors, sensorDevices } from "./detection";
 import { laneCenterX, roadGeometry, type RoadGeometry } from "./layout";
 
 const CAR_SPEED = 8; // м/с
-const PED_SPEED = 1.3; // м/с
+const PED_SPEED = 1.8; // м/с — ускоренный шаг, чтобы не мозолить глаза медленной анимацией
 const CAR_POOL = 24;
 const PED_POOL = 24;
 const CAR_LENGTH = 4.4;
@@ -166,7 +166,20 @@ function advanceCars(pool: Slot[], green: boolean, dt: number, geo: RoadGeometry
  * останавливаются на границе проезжей части. Кто уже ступил на переход,
  * когда сигнал был "идите", договаривает его до конца при любом сигнале.
  */
-function advancePeds(pool: Slot[], walk: boolean, dt: number, geo: RoadGeometry) {
+const ARRIVAL_EPS = 0.05; // насколько точно нужно упереться в gate, чтобы считать "подошёл"
+
+/**
+ * @param onWaiting — вызывается, когда пешеход реально дошёл до края
+ * проезжей части и стоит там (не может пройти, сигнал не "идите"); в
+ * режиме "Кнопка" это автоматически "нажимает" кнопку вызова.
+ */
+function advancePeds(
+  pool: Slot[],
+  walk: boolean,
+  dt: number,
+  geo: RoadGeometry,
+  onWaiting?: () => void,
+) {
   // "граница дороги" в терминах gate — расстояние от центра (0) до края
   // проезжей части ближе к её "своей" стороне (leftEdge/rightEdge — со
   // знаком, gate в advanceWithGate считается симметрично от 0)
@@ -187,7 +200,9 @@ function advancePeds(pool: Slot[], walk: boolean, dt: number, geo: RoadGeometry)
     const limited = gapLimitedSpeed(pool, s, "x", PED_SPEED, PED_MIN_GAP);
     let next = s.x + s.dir * limited * dt;
     if (!walk && !crossedGate) {
-      next = s.dir > 0 ? Math.min(next, -gate) : Math.max(next, gate);
+      const gatePos = s.dir > 0 ? -gate : gate;
+      next = s.dir > 0 ? Math.min(next, gatePos) : Math.max(next, gatePos);
+      if (Math.abs(next - gatePos) < ARRIVAL_EPS) onWaiting?.();
     }
     s.x = next;
     if (s.x > rightBound || s.x < leftBound) s.active = false;
@@ -265,11 +280,14 @@ export function TrafficSimulation({
   crossing,
   vehicleSignal,
   pedestrianSignal,
+  onPedestrianWaiting,
 }: {
   crossing: Crossing;
   /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
   vehicleSignal: VehicleSignal;
   pedestrianSignal: PedestrianSignal;
+  /** пешеход подошёл к переходу и ждёт — в режиме "Кнопка" это авто-нажатие вызова */
+  onPedestrianWaiting?: () => void;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const sensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
@@ -290,7 +308,7 @@ export function TrafficSimulation({
     trySpawnCars(cars.current, geo, crossing, dt);
     trySpawnPeds(peds.current, geo, crossing, dt);
     advanceCars(cars.current, vehicleSignal === "green", dt, geo);
-    advancePeds(peds.current, pedestrianSignal === "walk", dt, geo);
+    advancePeds(peds.current, pedestrianSignal === "walk", dt, geo, onPedestrianWaiting);
 
     cars.current.forEach((slot, i) =>
       applyDetection(
