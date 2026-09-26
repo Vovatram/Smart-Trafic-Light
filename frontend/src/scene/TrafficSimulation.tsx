@@ -10,6 +10,9 @@ const CAR_SPEED = 8; // м/с
 const PED_SPEED = 1.3; // м/с
 const CAR_POOL = 24;
 const PED_POOL = 24;
+const CAR_MIN_GAP = 6.5; // м — минимальная дистанция до идущей впереди машины в той же полосе
+const PED_MIN_GAP = 1.0; // м — то же самое для пешеходов на одной "дорожке"
+const LANE_EPS = 0.5; // допуск, чтобы считать двух агентов "в одной полосе"
 const HIDDEN_COLOR = "#334155"; // цвет "по умолчанию" — виден только пока идёт transition, реально не рендерится
 
 /** Слот пула: переиспользуемое состояние одного агента (машины или пешехода). */
@@ -77,19 +80,58 @@ function trySpawnPeds(pool: Slot[], geo: RoadGeometry, crossing: Crossing, dt: n
   }
 }
 
-function advanceCars(pool: Slot[], speed: number, dt: number, roadLength: number) {
+/**
+ * Урезает желаемую скорость до 0, если впереди в той же полосе (тот же dir,
+ * та же "боковая" координата с точностью LANE_EPS) слишком близко другой
+ * активный агент — простая очередь без формул IDM, но без наложения машин
+ * друг на друга у стоп-линии.
+ */
+function gapLimitedSpeed(pool: Slot[], self: Slot, axis: "x" | "z", desired: number, minGap: number): number {
+  if (desired === 0) return 0;
+  let nearestGap = Infinity;
+  for (const other of pool) {
+    if (other === self || !other.active || other.dir !== self.dir) continue;
+    const lateral = axis === "z" ? other.x - self.x : other.z - self.z;
+    if (Math.abs(lateral) > LANE_EPS) continue;
+    const primary = axis === "z" ? other.z - self.z : other.x - self.x;
+    const ahead = self.dir > 0 ? primary : -primary;
+    if (ahead > 0 && ahead < nearestGap) nearestGap = ahead;
+  }
+  return nearestGap < minGap ? 0 : desired;
+}
+
+/**
+ * Машины продолжают появляться и ехать даже на красный — просто тормозят
+ * перед стоп-линией (crossingHalf + stopOffset от центра) и ждут зелёного.
+ * Та, что уже проехала эту границу, доезжает переход не останавливаясь.
+ */
+function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
+  const green = crossing.vehicle_signal === "green";
+  const stopZ = geo.crossingHalf + geo.stopOffset;
   for (const s of pool) {
     if (!s.active) continue;
+    const beforeStopLine = s.dir > 0 ? s.z < -stopZ : s.z > stopZ;
+    const desired = beforeStopLine && !green ? 0 : CAR_SPEED;
+    const speed = gapLimitedSpeed(pool, s, "z", desired, CAR_MIN_GAP);
     s.z += s.dir * speed * dt;
-    if (s.z > roadLength || s.z < -roadLength) s.active = false;
+    if (s.z > geo.roadLength || s.z < -geo.roadLength) s.active = false;
   }
 }
 
-function advancePeds(pool: Slot[], speed: number, dt: number, geo: RoadGeometry) {
+/**
+ * Пешеходы так же продолжают выходить на тротуар и на красный — но
+ * останавливаются на границе проезжей части. Кто уже ступил на переход,
+ * когда сигнал был "идите", договаривает его до конца при любом сигнале.
+ */
+function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
+  const walk = crossing.pedestrian_signal === "walk";
   const rightBound = geo.rightEdge + 2;
   const leftBound = geo.leftEdge - 2;
   for (const s of pool) {
     if (!s.active) continue;
+    const beforeRoad = s.dir > 0 ? s.x < geo.leftEdge : s.x > geo.rightEdge;
+    const desired = beforeRoad && !walk ? 0 : PED_SPEED;
+    const speed = gapLimitedSpeed(pool, s, "x", desired, PED_MIN_GAP);
     s.x += s.dir * speed * dt;
     if (s.x > rightBound || s.x < leftBound) s.active = false;
   }
@@ -178,13 +220,11 @@ export function TrafficSimulation({ crossing }: { crossing: Crossing }) {
 
   useFrame((_, rawDelta) => {
     const dt = Math.min(rawDelta, 0.1);
-    const carSpeed = crossing.vehicle_signal === "green" ? CAR_SPEED : 0;
-    const pedSpeed = crossing.pedestrian_signal === "walk" ? PED_SPEED : 0;
 
     trySpawnCars(cars.current, geo, crossing, dt);
     trySpawnPeds(peds.current, geo, crossing, dt);
-    advanceCars(cars.current, carSpeed, dt, geo.roadLength);
-    advancePeds(peds.current, pedSpeed, dt, geo);
+    advanceCars(cars.current, crossing, dt, geo);
+    advancePeds(peds.current, crossing, dt, geo);
 
     cars.current.forEach((slot, i) =>
       applyDetection(
