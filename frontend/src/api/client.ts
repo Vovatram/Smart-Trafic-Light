@@ -1,4 +1,4 @@
-import type { Intersection, IntersectionBrief, Layout, Run } from "../types";
+import type { Crossing, CrossingBrief, CrossingPatch } from "../types";
 
 const BASE = "/api";
 
@@ -16,21 +16,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  intersections: () => request<IntersectionBrief[]>("/intersections"),
-  intersection: (id: number) => request<Intersection>(`/intersections/${id}`),
-  layout: (id: number) => request<Layout>(`/intersections/${id}/layout`),
-  runs: () => request<Run[]>("/runs"),
-  startRun: (id: number, programId?: number, seed = 0) =>
-    request<Run>(`/intersections/${id}/runs`, {
-      method: "POST",
-      body: JSON.stringify({ program_id: programId ?? null, seed }),
-    }),
-  stopRun: (runId: number) => request<Run>(`/runs/${runId}/stop`, { method: "POST" }),
-  controlRun: (runId: number, patch: { speed?: number; paused?: boolean }) =>
-    request<Run>(`/runs/${runId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  crossings: () => request<CrossingBrief[]>("/crossings"),
+  crossing: (id: number) => request<Crossing>(`/crossings/${id}`),
+  updateCrossing: (id: number, patch: CrossingPatch) =>
+    request<Crossing>(`/crossings/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 };
-
-export function runStreamUrl(runId: number): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${BASE}/ws/runs/${runId}`;
-}

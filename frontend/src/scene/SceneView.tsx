@@ -5,45 +5,55 @@ import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
-import type { Frame, Layout } from "../types";
-import { ApproachMarkers } from "./ApproachMarkers";
+import type { Crossing } from "../types";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
-import { Vehicles } from "./Vehicles";
 
-export type ViewName = "perspective" | "top" | "north" | "east";
+export type ViewName = "perspective" | "top" | "along" | "side";
 
-export const VIEWS: Record<ViewName, [number, number, number]> = {
-  perspective: [78, 62, 96],
-  top: [0, 170, 0.6],
-  north: [0, 26, 165],
-  east: [165, 26, 0],
+export const VIEW_LABEL: Record<ViewName, string> = {
+  perspective: "Перспектива",
+  top: "Сверху",
+  along: "Вдоль дороги",
+  side: "Сбоку",
 };
+
+export const VIEW_ORDER: ViewName[] = ["perspective", "top", "along", "side"];
+
+function viewPositions(roadLength: number): Record<ViewName, [number, number, number]> {
+  const d = Math.max(roadLength, 20);
+  return {
+    perspective: [d * 0.55, d * 0.45, d * 0.7],
+    top: [0, d * 1.6, 0.6],
+    along: [0, d * 0.22, d * 1.1],
+    side: [d * 1.1, d * 0.22, 0],
+  };
+}
 
 /** Плавно переставляет камеру при выборе предустановленного вида. */
 function CameraPose({
-  view,
+  target,
   controls,
 }: {
-  view: ViewName;
+  target: [number, number, number];
   controls: RefObject<OrbitControlsImpl | null>;
 }) {
   const camera = useThree((state) => state.camera);
-  const target = useRef(new THREE.Vector3(...VIEWS[view]));
+  const goal = useRef(new THREE.Vector3(...target));
   const moving = useRef(false);
 
   useEffect(() => {
-    target.current.set(...VIEWS[view]);
+    goal.current.set(...target);
     moving.current = true;
-  }, [view]);
+  }, [target]);
 
   useFrame((_, delta) => {
     if (!moving.current) return;
     const alpha = 1 - Math.exp(-6 * Math.min(delta, 0.1));
-    camera.position.lerp(target.current, alpha);
+    camera.position.lerp(goal.current, alpha);
     controls.current?.update();
-    if (camera.position.distanceTo(target.current) < 0.4) {
-      camera.position.copy(target.current);
+    if (camera.position.distanceTo(goal.current) < 0.4) {
+      camera.position.copy(goal.current);
       moving.current = false;
     }
   });
@@ -51,60 +61,46 @@ function CameraPose({
   return null;
 }
 
-export function SceneView({
-  layout,
-  view,
-  signals,
-  frameRef,
-}: {
-  layout: Layout | null;
-  view: ViewName;
-  signals?: Frame["signals"];
-  frameRef?: RefObject<Frame | null>;
-}) {
+export function SceneView({ crossing, view }: { crossing: Crossing | null; view: ViewName }) {
   const controls = useRef<OrbitControlsImpl>(null);
+  const roadLength = crossing?.road_length ?? 40;
+  const positions = viewPositions(roadLength);
 
   return (
-    <Canvas
-      shadows
-      camera={{ position: VIEWS.perspective, fov: 42, near: 0.5, far: 1200 }}
-      dpr={[1, 2]}
-    >
+    <Canvas shadows camera={{ position: positions.perspective, fov: 42, near: 0.5, far: 900 }} dpr={[1, 2]}>
       <color attach="background" args={["#0b1120"]} />
-      <fog attach="fog" args={["#0b1120", 260, 620]} />
+      <fog attach="fog" args={["#0b1120", roadLength * 4, roadLength * 10]} />
 
       <hemisphereLight args={["#93b4d8", "#1a1f2b", 0.55]} />
       <ambientLight intensity={0.25} />
       <directionalLight
-        position={[80, 120, 60]}
+        position={[roadLength, roadLength * 1.5, roadLength * 0.8]}
         intensity={1.5}
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-170}
-        shadow-camera-right={170}
-        shadow-camera-top={170}
-        shadow-camera-bottom={-170}
+        shadow-camera-left={-roadLength * 1.5}
+        shadow-camera-right={roadLength * 1.5}
+        shadow-camera-top={roadLength * 1.5}
+        shadow-camera-bottom={-roadLength * 1.5}
         shadow-camera-near={1}
-        shadow-camera-far={420}
+        shadow-camera-far={roadLength * 6}
       />
 
-      {layout && (
+      {crossing && (
         <>
-          <Roads layout={layout} />
-          <ApproachMarkers layout={layout} />
-          <SignalMasts layout={layout} signals={signals} />
-          {frameRef && <Vehicles layout={layout} frameRef={frameRef} />}
+          <Roads crossing={crossing} />
+          <SignalMasts crossing={crossing} />
         </>
       )}
 
-      <CameraPose view={view} controls={controls} />
+      <CameraPose target={positions[view]} controls={controls} />
       <OrbitControls
         ref={controls}
         target={[0, 0, 0]}
         enableDamping
         dampingFactor={0.08}
-        minDistance={20}
-        maxDistance={520}
+        minDistance={8}
+        maxDistance={roadLength * 8}
         maxPolarAngle={Math.PI / 2 - 0.02}
       />
     </Canvas>

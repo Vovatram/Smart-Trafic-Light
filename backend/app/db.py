@@ -1,9 +1,17 @@
+import sys
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
+
+if sys.platform == "win32":
+    # psycopg async не работает поверх ProactorEventLoop, который asyncio
+    # выбирает на Windows по умолчанию.
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 settings = get_settings()
 

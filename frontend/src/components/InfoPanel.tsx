@@ -1,63 +1,110 @@
-import { APPROACH_COLOR } from "../scene/ApproachMarkers";
 import type { ViewName } from "../scene/SceneView";
-import type { Intersection, IntersectionBrief, Layout } from "../types";
-import { DIRECTION_LABEL, DIRECTIONS } from "../types";
+import { VIEW_LABEL, VIEW_ORDER } from "../scene/SceneView";
+import type { Crossing, CrossingBrief, PedestrianSignal, VehicleSignal } from "../types";
 import { Button, Card, Select } from "./ui";
 
-const VIEW_LABEL: Record<ViewName, string> = {
-  perspective: "Перспектива",
-  top: "Сверху",
-  north: "С севера",
-  east: "С востока",
-};
+function LaneStepper({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm text-slate-300">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <Button
+          disabled={disabled || value <= 0}
+          onClick={() => onChange(value - 1)}
+          className="!px-2 !py-1"
+        >
+          −
+        </Button>
+        <span className="w-5 text-center text-sm tabular-nums text-slate-100">{value}</span>
+        <Button
+          disabled={disabled || value >= 5}
+          onClick={() => onChange(value + 1)}
+          className="!px-2 !py-1"
+        >
+          +
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-const VIEW_ORDER: ViewName[] = ["perspective", "top", "north", "east"];
+const VEHICLE_LABEL: Record<VehicleSignal, string> = { red: "Красный", yellow: "Жёлтый", green: "Зелёный" };
+const VEHICLE_ORDER: VehicleSignal[] = ["red", "yellow", "green"];
+const PEDESTRIAN_LABEL: Record<PedestrianSignal, string> = { stop: "Стоп", walk: "Идите" };
+const PEDESTRIAN_ORDER: PedestrianSignal[] = ["stop", "walk"];
 
 export function InfoPanel({
-  intersections,
+  crossings,
   selectedId,
   onSelect,
-  intersection,
-  layout,
+  crossing,
+  onLanesForward,
+  onLanesBackward,
+  onVehicleSignal,
+  onPedestrianSignal,
+  busy,
   view,
   onView,
 }: {
-  intersections: IntersectionBrief[];
+  crossings: CrossingBrief[];
   selectedId: number | null;
   onSelect: (id: number) => void;
-  intersection: Intersection | null;
-  layout: Layout | null;
+  crossing: Crossing | null;
+  onLanesForward: (value: number) => void;
+  onLanesBackward: (value: number) => void;
+  onVehicleSignal: (value: VehicleSignal) => void;
+  onPedestrianSignal: (value: PedestrianSignal) => void;
+  busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
 }) {
   return (
     <>
-      <Card title="Участок">
+      <Card title="Переход">
         <div className="space-y-3">
           <Select
             value={selectedId ?? ""}
             onChange={(value) => onSelect(Number(value))}
-            disabled={intersections.length === 0}
+            disabled={crossings.length === 0}
           >
-            {intersections.length === 0 && <option value="">нет данных</option>}
-            {intersections.map((item) => (
+            {crossings.length === 0 && <option value="">нет данных</option>}
+            {crossings.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
           </Select>
 
-          {layout && (
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-400">
-              <dt>ширина полосы</dt>
-              <dd className="text-right text-slate-200">{layout.lane_width} м</dd>
-              <dt>длина подхода</dt>
-              <dd className="text-right text-slate-200">{layout.approach_length} м</dd>
-              <dt>ширина Ю-С</dt>
-              <dd className="text-right text-slate-200">{layout.half_width_ns * 2} м</dd>
-              <dt>ширина З-В</dt>
-              <dd className="text-right text-slate-200">{layout.half_width_ew * 2} м</dd>
-            </dl>
+          {crossing && (
+            <div className="space-y-2 border-t border-slate-800 pt-3">
+              <LaneStepper
+                label="Полос «вперёд» (N)"
+                value={crossing.lanes_forward}
+                onChange={onLanesForward}
+                disabled={busy}
+              />
+              <LaneStepper
+                label="Полос «назад» (K)"
+                value={crossing.lanes_backward}
+                onChange={onLanesBackward}
+                disabled={busy}
+              />
+              <p className="text-[11px] leading-snug text-slate-500">
+                Правостороннее движение: N едет от вас в глубину сцены, K — навстречу.
+                Всего {crossing.lanes_forward + crossing.lanes_backward} полос, ширина
+                полосы {crossing.lane_width} м.
+              </p>
+            </div>
           )}
         </div>
       </Card>
@@ -75,43 +122,44 @@ export function InfoPanel({
         </p>
       </Card>
 
-      <Card title="Направления">
-        <table className="w-full text-xs tabular-nums">
-          <thead className="text-slate-500">
-            <tr>
-              <th className="text-left font-medium">сторона</th>
-              <th className="text-right font-medium">въезд</th>
-              <th className="text-right font-medium">выезд</th>
-              <th className="text-right font-medium">км/ч</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DIRECTIONS.map((direction) => {
-              const approach = intersection?.approaches.find(
-                (item) => item.direction === direction,
-              );
-              if (!approach) return null;
-              return (
-                <tr key={direction}>
-                  <td className="flex items-center gap-1.5 py-0.5 text-slate-300">
-                    <span
-                      className="inline-block size-2.5 rounded-sm"
-                      style={{ backgroundColor: APPROACH_COLOR[direction] }}
-                    />
-                    {DIRECTION_LABEL[direction]}
-                  </td>
-                  <td className="py-0.5 text-right">{approach.lanes_in}</td>
-                  <td className="py-0.5 text-right">{approach.lanes_out}</td>
-                  <td className="py-0.5 text-right">{approach.speed_limit_kmh}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <p className="mt-2 text-[11px] leading-snug text-slate-500">
-          Цветные торцы на концах дорог совпадают с цветами в таблице.
-        </p>
-      </Card>
+      {crossing && (
+        <Card title="Сигналы">
+          <div className="space-y-3">
+            <div>
+              <span className="mb-1 block text-xs text-slate-400">Автомобильный</span>
+              <div className="flex gap-2">
+                {VEHICLE_ORDER.map((value) => (
+                  <Button
+                    key={value}
+                    active={crossing.vehicle_signal === value}
+                    disabled={busy}
+                    className="flex-1"
+                    onClick={() => onVehicleSignal(value)}
+                  >
+                    {VEHICLE_LABEL[value]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="mb-1 block text-xs text-slate-400">Пешеходный</span>
+              <div className="flex gap-2">
+                {PEDESTRIAN_ORDER.map((value) => (
+                  <Button
+                    key={value}
+                    active={crossing.pedestrian_signal === value}
+                    disabled={busy}
+                    className="flex-1"
+                    onClick={() => onPedestrianSignal(value)}
+                  >
+                    {PEDESTRIAN_LABEL[value]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
     </>
   );
 }

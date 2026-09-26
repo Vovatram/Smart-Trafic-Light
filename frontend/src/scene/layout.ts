@@ -1,40 +1,79 @@
-import type { ApproachLayout, Direction, Layout } from "../types";
-
-export type Vec2 = [number, number];
-
-/** Направление движения машин, въезжающих с соответствующей стороны. */
-export const HEADING: Record<Direction, Vec2> = {
-  N: [0, -1],
-  S: [0, 1],
-  E: [-1, 0],
-  W: [1, 0],
-};
-
-export function rightOf([x, z]: Vec2): Vec2 {
-  return [z, -x];
-}
-
-export interface ApproachFrame extends ApproachLayout {
-  h: Vec2;
-  r: Vec2;
-}
-
-export function approachFrames(layout: Layout): ApproachFrame[] {
-  return layout.approaches.map((a) => {
-    const h = HEADING[a.direction];
-    return { ...a, h, r: rightOf(h) };
-  });
-}
+import type { Crossing } from "../types";
 
 /**
- * Точка в мировых координатах: travel — расстояние от центра перекрёстка
- * в сторону въезда, lateral — сдвиг вправо по ходу движения.
+ * Геометрия прямого участка дороги с пешеходным переходом посередине.
+ *
+ * Система координат: дорога идёт вдоль оси Z, ось X — поперёк. Правостороннее
+ * движение: полосы направления "вперёд" (N, едут в сторону +Z) лежат справа
+ * от осевой, то есть при X > 0; полосы направления "назад" (K, едут в сторону
+ * -Z) лежат слева, при X < 0. Переход — зона вокруг Z = 0.
  */
-export function point(frame: ApproachFrame, travel: number, lateral: number): Vec2 {
-  return [-frame.h[0] * travel + frame.r[0] * lateral, -frame.h[1] * travel + frame.r[1] * lateral];
+export interface RoadGeometry {
+  laneWidth: number;
+  lanesForward: number;
+  lanesBackward: number;
+  roadLength: number;
+  crossingWidth: number;
+  /** правая граница дороги (X), т.е. дальний край полос "вперёд" */
+  rightEdge: number;
+  /** левая граница дороги (X), т.е. дальний край полос "назад" (отрицательная) */
+  leftEdge: number;
+  crossingHalf: number;
+  poleOffset: number;
+  stopOffset: number;
 }
 
-/** Ось, вдоль которой едут машины этого въезда. */
-export function travelAxis(frame: ApproachFrame): "x" | "z" {
-  return Math.abs(frame.h[0]) > 0.5 ? "x" : "z";
+const POLE_OFFSET = 1.0; // отступ столба от края проезжей части
+const STOP_OFFSET = 1.0; // отступ стоп-линии/столба от края перехода
+
+export function roadGeometry(crossing: Crossing): RoadGeometry {
+  const laneWidth = crossing.lane_width;
+  const lanesForward = crossing.lanes_forward;
+  const lanesBackward = crossing.lanes_backward;
+  return {
+    laneWidth,
+    lanesForward,
+    lanesBackward,
+    roadLength: crossing.road_length,
+    crossingWidth: crossing.crossing_width,
+    rightEdge: lanesForward * laneWidth,
+    leftEdge: -lanesBackward * laneWidth,
+    crossingHalf: crossing.crossing_width / 2,
+    poleOffset: POLE_OFFSET,
+    stopOffset: STOP_OFFSET,
+  };
+}
+
+/** Столб стоит перед переходом со стороны, откуда едет обслуживаемое им направление. */
+export interface PoleSpec {
+  key: "forward" | "backward";
+  x: number;
+  z: number;
+  /** курс (рад.) автомобильного сигнала — навстречу обслуживаемому потоку */
+  vehicleFacing: number;
+  /** курс (рад.) пешеходного сигнала — к пешеходам, ждущим на этой стороне */
+  pedestrianFacing: number;
+}
+
+export function poles(geo: RoadGeometry): PoleSpec[] {
+  const list: PoleSpec[] = [];
+  if (geo.lanesForward > 0) {
+    list.push({
+      key: "forward",
+      x: geo.rightEdge + geo.poleOffset,
+      z: -(geo.crossingHalf + geo.stopOffset),
+      vehicleFacing: Math.PI, // смотрит в сторону -Z, навстречу машинам, едущим в +Z
+      pedestrianFacing: -Math.PI / 2, // смотрит в сторону -X, через дорогу
+    });
+  }
+  if (geo.lanesBackward > 0) {
+    list.push({
+      key: "backward",
+      x: geo.leftEdge - geo.poleOffset,
+      z: geo.crossingHalf + geo.stopOffset,
+      vehicleFacing: 0, // смотрит в сторону +Z, навстречу машинам, едущим в -Z
+      pedestrianFacing: Math.PI / 2, // смотрит в сторону +X, через дорогу
+    });
+  }
+  return list;
 }
