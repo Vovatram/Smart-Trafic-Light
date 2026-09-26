@@ -107,6 +107,38 @@ function gapLimitedSpeed(pool: Slot[], self: Slot, axis: "x" | "z", desired: num
 }
 
 /**
+ * Двигает агента вдоль его оси на gap-limited скорости и, если сигнал не
+ * пускает и он ещё не пересёк границу (gate, симметрично ±gate от центра),
+ * не даёт ему проехать дальше неё — сама скорость при этом не трогается,
+ * поэтому агент едет к границе нормально и тормозит уже вплотную к ней, а
+ * не сразу при спавне. Тот, кто уже за границей, идёт дальше без ограничений.
+ */
+function advanceWithGate(
+  pool: Slot[],
+  dt: number,
+  axis: "x" | "z",
+  speed: number,
+  minGap: number,
+  go: boolean,
+  gate: number,
+  bound: { min: number; max: number },
+) {
+  for (const s of pool) {
+    if (!s.active) continue;
+    const coord = axis === "z" ? s.z : s.x;
+    const crossedGate = s.dir > 0 ? coord >= -gate : coord <= gate;
+    const limited = gapLimitedSpeed(pool, s, axis, speed, minGap);
+    let next = coord + s.dir * limited * dt;
+    if (!go && !crossedGate) {
+      next = s.dir > 0 ? Math.min(next, -gate) : Math.max(next, gate);
+    }
+    if (axis === "z") s.z = next;
+    else s.x = next;
+    if (next > bound.max || next < bound.min) s.active = false;
+  }
+}
+
+/**
  * Машины продолжают появляться и ехать даже на красный — просто тормозят
  * перед стоп-линией (crossingHalf + stopOffset от центра) и ждут зелёного.
  * Та, что уже проехала эту границу, доезжает переход не останавливаясь.
@@ -114,14 +146,10 @@ function gapLimitedSpeed(pool: Slot[], self: Slot, axis: "x" | "z", desired: num
 function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
   const green = crossing.vehicle_signal === "green";
   const stopZ = geo.crossingHalf + geo.stopOffset;
-  for (const s of pool) {
-    if (!s.active) continue;
-    const beforeStopLine = s.dir > 0 ? s.z < -stopZ : s.z > stopZ;
-    const desired = beforeStopLine && !green ? 0 : CAR_SPEED;
-    const speed = gapLimitedSpeed(pool, s, "z", desired, CAR_MIN_GAP);
-    s.z += s.dir * speed * dt;
-    if (s.z > geo.roadLength || s.z < -geo.roadLength) s.active = false;
-  }
+  advanceWithGate(pool, dt, "z", CAR_SPEED, CAR_MIN_GAP, green, stopZ, {
+    min: -geo.roadLength,
+    max: geo.roadLength,
+  });
 }
 
 /**
@@ -131,17 +159,27 @@ function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeom
  */
 function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
   const walk = crossing.pedestrian_signal === "walk";
-  // граница despawn должна быть дальше самой глубокой точки площадки спавна,
-  // иначе пешеход, появившийся в глубине тротуара, исчезнет в тот же кадр
+  // "граница дороги" в терминах gate — расстояние от центра (0) до края
+  // проезжей части ближе к её "своей" стороне (leftEdge/rightEdge — со
+  // знаком, gate в advanceWithGate считается симметрично от 0)
+  const gateLeft = -geo.leftEdge; // leftEdge отрицательный — переводим в положительную "дистанцию от 0"
+  const gateRight = geo.rightEdge;
+  // площадки спавна разной глубины слева/справа возможны при разных lane-counts,
+  // поэтому despawn считаем по каждой стороне отдельно, а не общим gate
   const spawnDepth = PED_SPAWN_MARGIN + PED_SPAWN_DEPTH;
   const rightBound = geo.rightEdge + spawnDepth + 1;
   const leftBound = geo.leftEdge - spawnDepth - 1;
+
   for (const s of pool) {
     if (!s.active) continue;
-    const beforeRoad = s.dir > 0 ? s.x < geo.leftEdge : s.x > geo.rightEdge;
-    const desired = beforeRoad && !walk ? 0 : PED_SPEED;
-    const speed = gapLimitedSpeed(pool, s, "x", desired, PED_MIN_GAP);
-    s.x += s.dir * speed * dt;
+    const gate = s.dir > 0 ? gateLeft : gateRight;
+    const crossedGate = s.dir > 0 ? s.x >= -gateLeft : s.x <= gateRight;
+    const limited = gapLimitedSpeed(pool, s, "x", PED_SPEED, PED_MIN_GAP);
+    let next = s.x + s.dir * limited * dt;
+    if (!walk && !crossedGate) {
+      next = s.dir > 0 ? Math.min(next, -gate) : Math.max(next, gate);
+    }
+    s.x = next;
     if (s.x > rightBound || s.x < leftBound) s.active = false;
   }
 }
