@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 import type { Crossing } from "../types";
+import { CameraPoles } from "./CameraPoles";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 
@@ -90,6 +91,7 @@ export function SceneView({ crossing, view }: { crossing: Crossing | null; view:
         <>
           <Roads crossing={crossing} />
           <SignalMasts crossing={crossing} />
+          <CameraPoles crossing={crossing} />
         </>
       )}
 

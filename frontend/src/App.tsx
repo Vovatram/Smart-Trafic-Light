@@ -23,39 +23,44 @@ export default function App() {
       .catch((cause: Error) => setError(cause.message));
   }, []);
 
+  const reloadCrossing = useCallback((id: number) => {
+    return api.crossing(id).then((detail) => {
+      setCrossing(detail);
+      setError(null);
+      return detail;
+    });
+  }, []);
+
   useEffect(() => {
     if (selectedId === null) return;
     let cancelled = false;
 
-    api
-      .crossing(selectedId)
-      .then((detail) => {
-        if (!cancelled) {
-          setCrossing(detail);
-          setError(null);
-        }
-      })
-      .catch((cause: Error) => {
-        if (!cancelled) setError(cause.message);
-      });
+    reloadCrossing(selectedId).catch((cause: Error) => {
+      if (!cancelled) setError(cause.message);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, reloadCrossing]);
+
+  const run = useCallback(
+    (action: () => Promise<unknown>) => {
+      setBusy(true);
+      setError(null);
+      return action()
+        .catch((cause: Error) => setError(cause.message))
+        .finally(() => setBusy(false));
+    },
+    [],
+  );
 
   const patch = useCallback(
     (body: Parameters<typeof api.updateCrossing>[1]) => {
       if (crossing === null) return;
-      setBusy(true);
-      setError(null);
-      api
-        .updateCrossing(crossing.id, body)
-        .then(setCrossing)
-        .catch((cause: Error) => setError(cause.message))
-        .finally(() => setBusy(false));
+      void run(() => api.updateCrossing(crossing.id, body).then(setCrossing));
     },
-    [crossing],
+    [crossing, run],
   );
 
   const onLanesForward = useCallback((value: number) => patch({ lanes_forward: value }), [patch]);
@@ -67,6 +72,42 @@ export default function App() {
   const onPedestrianSignal = useCallback(
     (value: PedestrianSignal) => patch({ pedestrian_signal: value }),
     [patch],
+  );
+
+  const onAddCamera = useCallback(() => {
+    if (crossing === null) return;
+    const side = crossing.camera_poles.length % 2 === 0 ? "left" : "right";
+    void run(() => api.addCameraPole(crossing.id, { side }).then(() => reloadCrossing(crossing.id)));
+  }, [crossing, run, reloadCrossing]);
+
+  const onChangeCamera = useCallback(
+    (id: number, cameraPatch: Parameters<typeof api.updateCameraPole>[1]) => {
+      if (crossing === null) return;
+      void run(() =>
+        api.updateCameraPole(id, cameraPatch).then((updated) => {
+          setCrossing((prev) =>
+            prev
+              ? { ...prev, camera_poles: prev.camera_poles.map((p) => (p.id === id ? updated : p)) }
+              : prev,
+          );
+        }),
+      );
+    },
+    [crossing, run],
+  );
+
+  const onRemoveCamera = useCallback(
+    (id: number) => {
+      if (crossing === null) return;
+      void run(() =>
+        api.removeCameraPole(id).then(() => {
+          setCrossing((prev) =>
+            prev ? { ...prev, camera_poles: prev.camera_poles.filter((p) => p.id !== id) } : prev,
+          );
+        }),
+      );
+    },
+    [crossing, run],
   );
 
   return (
@@ -83,7 +124,7 @@ export default function App() {
         </p>
       </header>
 
-      <aside className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3">
+      <aside className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 2rem)" }}>
         <InfoPanel
           crossings={crossings}
           selectedId={selectedId}
@@ -96,6 +137,9 @@ export default function App() {
           busy={busy}
           view={view}
           onView={setView}
+          onAddCamera={onAddCamera}
+          onChangeCamera={onChangeCamera}
+          onRemoveCamera={onRemoveCamera}
         />
       </aside>
 

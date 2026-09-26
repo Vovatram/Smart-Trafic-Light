@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models import PedestrianSignal, VehicleSignal
+from app.models import CameraSide, PedestrianSignal, VehicleSignal
 
 
 class CrossingIn(BaseModel):
@@ -34,6 +34,27 @@ class CrossingUpdate(BaseModel):
     pedestrian_signal: PedestrianSignal | None = None
 
 
+class CameraPoleIn(BaseModel):
+    side: CameraSide = CameraSide.LEFT
+    height: float = Field(default=5.0, ge=1.5, le=12.0)
+    rotation_deg: float = Field(default=0.0, ge=0, lt=360)
+
+
+class CameraPoleUpdate(BaseModel):
+    side: CameraSide | None = None
+    height: float | None = Field(default=None, ge=1.5, le=12.0)
+    rotation_deg: float | None = Field(default=None, ge=0, lt=360)
+
+
+class CameraPoleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    side: CameraSide
+    height: float
+    rotation_deg: float
+
+
 class CrossingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +69,7 @@ class CrossingOut(BaseModel):
     vehicle_signal: VehicleSignal
     pedestrian_signal: PedestrianSignal
     created_at: datetime
+    camera_poles: list[CameraPoleOut]
 
 
 class CrossingBrief(BaseModel):

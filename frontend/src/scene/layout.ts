@@ -1,12 +1,15 @@
-import type { Crossing } from "../types";
+import type { CameraSide, Crossing } from "../types";
 
 /**
  * Геометрия прямого участка дороги с пешеходным переходом посередине.
  *
- * Система координат: дорога идёт вдоль оси Z, ось X — поперёк. Правостороннее
- * движение: полосы направления "вперёд" (N, едут в сторону +Z) лежат справа
- * от осевой, то есть при X > 0; полосы направления "назад" (K, едут в сторону
- * -Z) лежат слева, при X < 0. Переход — зона вокруг Z = 0.
+ * Система координат: дорога идёт вдоль оси Z, ось X — поперёк, Y — вверх
+ * (правая тройка, как в three.js). Правостороннее движение: у каждого
+ * направления полосы лежат со своей правой стороны по ходу движения. Для
+ * машины, едущей в сторону +Z, "право" — это -X (правило правой руки:
+ * right = (-Fz, 0, Fx) для вектора движения F); для машины, едущей в
+ * сторону -Z, "право" — это +X. Поэтому полосы "вперёд" (N) лежат при
+ * X < 0, полосы "назад" (K) — при X > 0. Переход — зона вокруг Z = 0.
  */
 export interface RoadGeometry {
   laneWidth: number;
@@ -14,17 +17,19 @@ export interface RoadGeometry {
   lanesBackward: number;
   roadLength: number;
   crossingWidth: number;
-  /** правая граница дороги (X), т.е. дальний край полос "вперёд" */
+  /** правая (по X) граница дороги — дальний край полос "назад" */
   rightEdge: number;
-  /** левая граница дороги (X), т.е. дальний край полос "назад" (отрицательная) */
+  /** левая (по X) граница дороги — дальний край полос "вперёд", отрицательная */
   leftEdge: number;
   crossingHalf: number;
   poleOffset: number;
   stopOffset: number;
+  cameraOffset: number;
 }
 
-const POLE_OFFSET = 1.0; // отступ столба от края проезжей части
+const POLE_OFFSET = 1.0; // отступ столба светофора от края проезжей части
 const STOP_OFFSET = 1.0; // отступ стоп-линии/столба от края перехода
+const CAMERA_OFFSET = 1.8; // отступ столба камеры — дальше светофорного, чтобы не сливались
 
 export function roadGeometry(crossing: Crossing): RoadGeometry {
   const laneWidth = crossing.lane_width;
@@ -36,11 +41,12 @@ export function roadGeometry(crossing: Crossing): RoadGeometry {
     lanesBackward,
     roadLength: crossing.road_length,
     crossingWidth: crossing.crossing_width,
-    rightEdge: lanesForward * laneWidth,
-    leftEdge: -lanesBackward * laneWidth,
+    rightEdge: lanesBackward * laneWidth,
+    leftEdge: -lanesForward * laneWidth,
     crossingHalf: crossing.crossing_width / 2,
     poleOffset: POLE_OFFSET,
     stopOffset: STOP_OFFSET,
+    cameraOffset: CAMERA_OFFSET,
   };
 }
 
@@ -60,20 +66,26 @@ export function poles(geo: RoadGeometry): PoleSpec[] {
   if (geo.lanesForward > 0) {
     list.push({
       key: "forward",
-      x: geo.rightEdge + geo.poleOffset,
+      x: geo.leftEdge - geo.poleOffset,
       z: -(geo.crossingHalf + geo.stopOffset),
       vehicleFacing: Math.PI, // смотрит в сторону -Z, навстречу машинам, едущим в +Z
-      pedestrianFacing: -Math.PI / 2, // смотрит в сторону -X, через дорогу
+      pedestrianFacing: Math.PI / 2, // смотрит в сторону +X, через дорогу
     });
   }
   if (geo.lanesBackward > 0) {
     list.push({
       key: "backward",
-      x: geo.leftEdge - geo.poleOffset,
+      x: geo.rightEdge + geo.poleOffset,
       z: geo.crossingHalf + geo.stopOffset,
       vehicleFacing: 0, // смотрит в сторону +Z, навстречу машинам, едущим в -Z
-      pedestrianFacing: Math.PI / 2, // смотрит в сторону +X, через дорогу
+      pedestrianFacing: -Math.PI / 2, // смотрит в сторону -X, через дорогу
     });
   }
   return list;
+}
+
+/** Позиция столба с камерой: снаружи дороги, прямо над переходом (Z = 0). */
+export function cameraPolePosition(geo: RoadGeometry, side: CameraSide): [number, number] {
+  const x = side === "left" ? geo.leftEdge - geo.cameraOffset : geo.rightEdge + geo.cameraOffset;
+  return [x, 0];
 }

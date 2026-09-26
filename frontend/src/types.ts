@@ -1,5 +1,15 @@
 export type VehicleSignal = "green" | "yellow" | "red";
 export type PedestrianSignal = "walk" | "stop";
+export type CameraSide = "left" | "right";
+
+export interface CameraPole {
+  id: number;
+  side: CameraSide;
+  height: number;
+  rotation_deg: number;
+}
+
+export type CameraPolePatch = Partial<Pick<CameraPole, "side" | "height" | "rotation_deg">>;
 
 export interface CrossingBrief {
   id: number;
@@ -16,6 +26,7 @@ export interface Crossing extends CrossingBrief {
   vehicle_signal: VehicleSignal;
   pedestrian_signal: PedestrianSignal;
   created_at: string;
+  camera_poles: CameraPole[];
 }
 
 export type CrossingPatch = Partial<

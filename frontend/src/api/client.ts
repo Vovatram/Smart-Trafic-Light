@@ -1,4 +1,4 @@
-import type { Crossing, CrossingBrief, CrossingPatch } from "../types";
+import type { CameraPole, CameraPolePatch, Crossing, CrossingBrief, CrossingPatch } from "../types";
 
 const BASE = "/api";
 
@@ -20,4 +20,12 @@ export const api = {
   crossing: (id: number) => request<Crossing>(`/crossings/${id}`),
   updateCrossing: (id: number, patch: CrossingPatch) =>
     request<Crossing>(`/crossings/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  addCameraPole: (crossingId: number, body: CameraPolePatch = {}) =>
+    request<CameraPole>(`/crossings/${crossingId}/camera-poles`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateCameraPole: (id: number, patch: CameraPolePatch) =>
+    request<CameraPole>(`/camera-poles/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  removeCameraPole: (id: number) => request<void>(`/camera-poles/${id}`, { method: "DELETE" }),
 };

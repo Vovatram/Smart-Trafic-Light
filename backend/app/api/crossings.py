@@ -6,8 +6,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Crossing
-from app.schemas import CrossingBrief, CrossingIn, CrossingOut, CrossingUpdate
+from app.models import CameraPole, Crossing
+from app.schemas import (
+    CameraPoleIn,
+    CameraPoleOut,
+    CameraPoleUpdate,
+    CrossingBrief,
+    CrossingIn,
+    CrossingOut,
+    CrossingUpdate,
+)
 
 router = APIRouter(prefix="/api", tags=["crossings"])
 
@@ -17,6 +25,13 @@ async def _load(session: AsyncSession, crossing_id: int) -> Crossing:
     if crossing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "переход не найден")
     return crossing
+
+
+async def _load_camera(session: AsyncSession, camera_id: int) -> CameraPole:
+    camera = await session.get(CameraPole, camera_id)
+    if camera is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "камера не найдена")
+    return camera
 
 
 @router.get("/crossings", response_model=list[CrossingBrief])
@@ -70,4 +85,37 @@ async def update_crossing(
 async def delete_crossing(crossing_id: int, session: AsyncSession = Depends(get_session)):
     crossing = await _load(session, crossing_id)
     await session.delete(crossing)
+    await session.commit()
+
+
+@router.post(
+    "/crossings/{crossing_id}/camera-poles", response_model=CameraPoleOut, status_code=201
+)
+async def add_camera_pole(
+    crossing_id: int, payload: CameraPoleIn, session: AsyncSession = Depends(get_session)
+):
+    await _load(session, crossing_id)
+    camera = CameraPole(crossing_id=crossing_id, **payload.model_dump())
+    session.add(camera)
+    await session.commit()
+    await session.refresh(camera)
+    return camera
+
+
+@router.patch("/camera-poles/{camera_id}", response_model=CameraPoleOut)
+async def update_camera_pole(
+    camera_id: int, payload: CameraPoleUpdate, session: AsyncSession = Depends(get_session)
+):
+    camera = await _load_camera(session, camera_id)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(camera, key, value)
+    await session.commit()
+    await session.refresh(camera)
+    return camera
+
+
+@router.delete("/camera-poles/{camera_id}", status_code=204)
+async def delete_camera_pole(camera_id: int, session: AsyncSession = Depends(get_session)):
+    camera = await _load_camera(session, camera_id)
+    await session.delete(camera)
     await session.commit()

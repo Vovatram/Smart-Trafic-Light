@@ -79,8 +79,8 @@ function useMarkings(crossing: Crossing): Box[] {
       for (let z = -L + 3; z < -gap - 1; z += 6) boxes.push({ x, z: z + 1.5, sx: 0.12, sz: 3 });
       for (let z = gap + 1; z < L - 3; z += 6) boxes.push({ x, z: z + 1.5, sx: 0.12, sz: 3 });
     };
-    for (let i = 1; i < geo.lanesForward; i += 1) dashed(i * w);
-    for (let i = 1; i < geo.lanesBackward; i += 1) dashed(-i * w);
+    for (let i = 1; i < geo.lanesForward; i += 1) dashed(-i * w);
+    for (let i = 1; i < geo.lanesBackward; i += 1) dashed(i * w);
 
     // сплошные по внешним краям проезжей части
     if (geo.rightEdge > 0) boxes.push({ x: geo.rightEdge - 0.07, z: 0, sx: 0.14, sz: L * 2 });
@@ -89,17 +89,17 @@ function useMarkings(crossing: Crossing): Box[] {
     // стоп-линии перед переходом, для каждого направления, что реально едет
     if (geo.lanesForward > 0) {
       boxes.push({
-        x: geo.rightEdge / 2,
+        x: geo.leftEdge / 2,
         z: -(gap + geo.stopOffset - 0.3),
-        sx: geo.rightEdge,
+        sx: -geo.leftEdge,
         sz: 0.4,
       });
     }
     if (geo.lanesBackward > 0) {
       boxes.push({
-        x: geo.leftEdge / 2,
+        x: geo.rightEdge / 2,
         z: gap + geo.stopOffset - 0.3,
-        sx: -geo.leftEdge,
+        sx: geo.rightEdge,
         sz: 0.4,
       });
     }
