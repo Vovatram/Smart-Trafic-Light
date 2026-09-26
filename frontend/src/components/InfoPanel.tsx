@@ -1,12 +1,7 @@
 import type { ViewName } from "../scene/SceneView";
 import { VIEW_LABEL, VIEW_ORDER } from "../scene/SceneView";
-import type { Crossing, CrossingBrief, DeviceType, PedestrianSignal, VehicleSignal } from "../types";
+import type { Crossing, CrossingBrief, DeviceType } from "../types";
 import { Button, Card, Select, Stepper } from "./ui";
-
-const VEHICLE_LABEL: Record<VehicleSignal, string> = { red: "Красный", yellow: "Жёлтый", green: "Зелёный" };
-const VEHICLE_ORDER: VehicleSignal[] = ["red", "yellow", "green"];
-const PEDESTRIAN_LABEL: Record<PedestrianSignal, string> = { stop: "Стоп", walk: "Идите" };
-const PEDESTRIAN_ORDER: PedestrianSignal[] = ["stop", "walk"];
 
 const DEVICE_LABEL: Record<DeviceType, string> = {
   camera: "Камера",
@@ -22,8 +17,6 @@ export function InfoPanel({
   crossing,
   onLanesForward,
   onLanesBackward,
-  onVehicleSignal,
-  onPedestrianSignal,
   busy,
   view,
   onView,
@@ -40,8 +33,6 @@ export function InfoPanel({
   crossing: Crossing | null;
   onLanesForward: (value: number) => void;
   onLanesBackward: (value: number) => void;
-  onVehicleSignal: (value: VehicleSignal) => void;
-  onPedestrianSignal: (value: PedestrianSignal) => void;
   busy: boolean;
   view: ViewName;
   onView: (view: ViewName) => void;
@@ -109,45 +100,6 @@ export function InfoPanel({
           Мышь: левая кнопка — поворот, колесо — приближение, правая — сдвиг.
         </p>
       </Card>
-
-      {crossing && (
-        <Card title="Сигналы">
-          <div className="space-y-3">
-            <div>
-              <span className="mb-1 block text-xs text-slate-400">Автомобильный</span>
-              <div className="flex gap-2">
-                {VEHICLE_ORDER.map((value) => (
-                  <Button
-                    key={value}
-                    active={crossing.vehicle_signal === value}
-                    disabled={busy}
-                    className="flex-1"
-                    onClick={() => onVehicleSignal(value)}
-                  >
-                    {VEHICLE_LABEL[value]}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="mb-1 block text-xs text-slate-400">Пешеходный</span>
-              <div className="flex gap-2">
-                {PEDESTRIAN_ORDER.map((value) => (
-                  <Button
-                    key={value}
-                    active={crossing.pedestrian_signal === value}
-                    disabled={busy}
-                    className="flex-1"
-                    onClick={() => onPedestrianSignal(value)}
-                  >
-                    {PEDESTRIAN_LABEL[value]}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {crossing && (
         <Card title="ИТС-объекты">

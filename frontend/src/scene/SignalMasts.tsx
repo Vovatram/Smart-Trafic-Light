@@ -1,3 +1,4 @@
+import type { ThreeEvent } from "@react-three/fiber";
 import { useMemo } from "react";
 
 import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
@@ -37,13 +38,25 @@ function VehicleHead({
   position,
   rotation,
   state,
+  onClick,
 }: {
   position: [number, number, number];
   rotation: number;
   state: VehicleSignal;
+  onClick?: () => void;
 }) {
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    onClick?.();
+  };
   return (
-    <group position={position} rotation={[0, rotation, 0]}>
+    <group
+      position={position}
+      rotation={[0, rotation, 0]}
+      onClick={onClick && handleClick}
+      onPointerOver={() => onClick && (document.body.style.cursor = "pointer")}
+      onPointerOut={() => (document.body.style.cursor = "auto")}
+    >
       <mesh castShadow>
         <boxGeometry args={[0.42, 1.15, 0.3]} />
         <meshStandardMaterial color="#111520" roughness={0.7} />
@@ -59,13 +72,25 @@ function PedestrianHead({
   position,
   rotation,
   state,
+  onClick,
 }: {
   position: [number, number, number];
   rotation: number;
   state: PedestrianSignal;
+  onClick?: () => void;
 }) {
+  const handleClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    onClick?.();
+  };
   return (
-    <group position={position} rotation={[0, rotation, 0]}>
+    <group
+      position={position}
+      rotation={[0, rotation, 0]}
+      onClick={onClick && handleClick}
+      onPointerOver={() => onClick && (document.body.style.cursor = "pointer")}
+      onPointerOut={() => (document.body.style.cursor = "auto")}
+    >
       <mesh castShadow>
         <boxGeometry args={[0.36, 0.62, 0.26]} />
         <meshStandardMaterial color="#111520" roughness={0.7} />
@@ -83,6 +108,8 @@ function Pole({
   pedestrianFacing,
   vehicleSignal,
   pedestrianSignal,
+  onClickVehicle,
+  onClickPedestrian,
 }: {
   x: number;
   z: number;
@@ -90,6 +117,8 @@ function Pole({
   pedestrianFacing: number;
   vehicleSignal: VehicleSignal;
   pedestrianSignal: PedestrianSignal;
+  onClickVehicle?: () => void;
+  onClickPedestrian?: () => void;
 }) {
   return (
     <group>
@@ -97,17 +126,36 @@ function Pole({
         <cylinderGeometry args={[0.11, 0.14, POLE_HEIGHT, 12]} />
         <meshStandardMaterial color="#3b4252" roughness={0.6} metalness={0.3} />
       </mesh>
-      <VehicleHead position={[x, VEHICLE_HEAD_Y, z]} rotation={vehicleFacing} state={vehicleSignal} />
+      <VehicleHead
+        position={[x, VEHICLE_HEAD_Y, z]}
+        rotation={vehicleFacing}
+        state={vehicleSignal}
+        onClick={onClickVehicle}
+      />
       <PedestrianHead
         position={[x, PEDESTRIAN_HEAD_Y, z]}
         rotation={pedestrianFacing}
         state={pedestrianSignal}
+        onClick={onClickPedestrian}
       />
     </group>
   );
 }
 
-export function SignalMasts({ crossing }: { crossing: Crossing }) {
+export function SignalMasts({
+  crossing,
+  vehicleSignal,
+  pedestrianSignal,
+  onClickVehicle,
+  onClickPedestrian,
+}: {
+  crossing: Crossing;
+  /** текущий сигнал для отрисовки ламп — из useSignalState, не обязательно crossing.vehicle_signal */
+  vehicleSignal: VehicleSignal;
+  pedestrianSignal: PedestrianSignal;
+  onClickVehicle?: () => void;
+  onClickPedestrian?: () => void;
+}) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const items = useMemo(() => poles(geo), [geo]);
 
@@ -120,8 +168,10 @@ export function SignalMasts({ crossing }: { crossing: Crossing }) {
           z={pole.z}
           vehicleFacing={pole.vehicleFacing}
           pedestrianFacing={pole.pedestrianFacing}
-          vehicleSignal={crossing.vehicle_signal}
-          pedestrianSignal={crossing.pedestrian_signal}
+          vehicleSignal={vehicleSignal}
+          pedestrianSignal={pedestrianSignal}
+          onClickVehicle={onClickVehicle}
+          onClickPedestrian={onClickPedestrian}
         />
       ))}
     </group>

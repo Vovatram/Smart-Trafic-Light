@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models import DeviceType, PedestrianSignal, VehicleSignal
+from app.models import DeviceType, PedestrianSignal, SignalMode, VehicleSignal
 
 POLE_DEFAULTS: dict[DeviceType, tuple[float, float]] = {
     # device_type -> (fov_deg, view_radius)
@@ -46,6 +46,11 @@ class CrossingUpdate(BaseModel):
     vph_backward: float | None = Field(default=None, ge=0, le=2000)
     peds_left_vph: float | None = Field(default=None, ge=0, le=2000)
     peds_right_vph: float | None = Field(default=None, ge=0, le=2000)
+    signal_mode: SignalMode | None = None
+    active_cycle_id: int | None = None
+    all_red_s: float | None = Field(default=None, ge=1, le=15)
+    button_min_green_s: float | None = Field(default=None, ge=3, le=180)
+    button_peds_s: float | None = Field(default=None, ge=3, le=120)
 
 
 class ItsDeviceIn(BaseModel):
@@ -107,6 +112,27 @@ class ItsDeviceOut(BaseModel):
     loop_length: float | None
 
 
+class SignalCycleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    green_cars_s: float = Field(default=40.0, ge=3, le=180)
+    green_peds_s: float = Field(default=15.0, ge=3, le=120)
+
+
+class SignalCycleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    green_cars_s: float | None = Field(default=None, ge=3, le=180)
+    green_peds_s: float | None = Field(default=None, ge=3, le=120)
+
+
+class SignalCycleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    green_cars_s: float
+    green_peds_s: float
+
+
 class CrossingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -124,8 +150,14 @@ class CrossingOut(BaseModel):
     vph_backward: float
     peds_left_vph: float
     peds_right_vph: float
+    signal_mode: SignalMode
+    active_cycle_id: int | None
+    all_red_s: float
+    button_min_green_s: float
+    button_peds_s: float
     created_at: datetime
     its_devices: list[ItsDeviceOut]
+    cycles: list[SignalCycleOut]
 
 
 class CrossingBrief(BaseModel):

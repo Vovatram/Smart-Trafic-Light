@@ -3,8 +3,18 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api/client";
 import { DeviceEditor } from "./components/DeviceEditor";
 import { InfoPanel } from "./components/InfoPanel";
+import { SignalModePanel } from "./components/SignalModePanel";
+import { SignalPicker } from "./components/SignalPicker";
+import { useSignalState } from "./hooks/useSignalState";
 import { SceneView, type ViewName } from "./scene/SceneView";
-import type { Crossing, CrossingBrief, DeviceType, PedestrianSignal, VehicleSignal } from "./types";
+import type {
+  Crossing,
+  CrossingBrief,
+  DeviceType,
+  PedestrianSignal,
+  SignalMode,
+  VehicleSignal,
+} from "./types";
 
 export default function App() {
   const [crossings, setCrossings] = useState<CrossingBrief[]>([]);
@@ -16,6 +26,9 @@ export default function App() {
   const [placingType, setPlacingType] = useState<DeviceType | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
   const [generationMode, setGenerationMode] = useState(false);
+  const [pickerKind, setPickerKind] = useState<"vehicle" | "pedestrian" | null>(null);
+
+  const { live, requestCall } = useSignalState(crossing);
 
   useEffect(() => {
     api
@@ -66,14 +79,6 @@ export default function App() {
 
   const onLanesForward = useCallback((value: number) => patch({ lanes_forward: value }), [patch]);
   const onLanesBackward = useCallback((value: number) => patch({ lanes_backward: value }), [patch]);
-  const onVehicleSignal = useCallback(
-    (value: VehicleSignal) => patch({ vehicle_signal: value }),
-    [patch],
-  );
-  const onPedestrianSignal = useCallback(
-    (value: PedestrianSignal) => patch({ pedestrian_signal: value }),
-    [patch],
-  );
 
   const onStartPlacing = useCallback((type: DeviceType) => {
     setPlacingType(type);
@@ -106,7 +111,10 @@ export default function App() {
     [crossing, placingType, run],
   );
 
-  const onSelectDevice = useCallback((id: number) => setSelectedDeviceId(id), []);
+  const onSelectDevice = useCallback((id: number) => {
+    setSelectedDeviceId(id);
+    setPickerKind(null);
+  }, []);
 
   const onChangeDevice = useCallback(
     (id: number, devicePatch: Parameters<typeof api.updateItsDevice>[1]) => {
@@ -136,7 +144,75 @@ export default function App() {
     [run],
   );
 
+  // --- светофор: клик по лампе открывает пикер, выбор цвета переводит в ручной режим ---
+  const openVehiclePicker = useCallback(() => {
+    setPickerKind("vehicle");
+    setSelectedDeviceId(null);
+  }, []);
+  const openPedestrianPicker = useCallback(() => {
+    setPickerKind("pedestrian");
+    setSelectedDeviceId(null);
+  }, []);
+  const onPickVehicle = useCallback(
+    (value: VehicleSignal) => patch({ vehicle_signal: value, signal_mode: "manual" }),
+    [patch],
+  );
+  const onPickPedestrian = useCallback(
+    (value: PedestrianSignal) => patch({ pedestrian_signal: value, signal_mode: "manual" }),
+    [patch],
+  );
+
+  // --- режим управления: ручной / адаптивный / циклы / кнопка ---
+  const onSetMode = useCallback((mode: SignalMode) => patch({ signal_mode: mode }), [patch]);
+  const onSelectCycle = useCallback((id: number) => patch({ active_cycle_id: id }), [patch]);
+  const onAllRedChange = useCallback((value: number) => patch({ all_red_s: value }), [patch]);
+  const onButtonMinGreenChange = useCallback(
+    (value: number) => patch({ button_min_green_s: value }),
+    [patch],
+  );
+  const onButtonPedsChange = useCallback(
+    (value: number) => patch({ button_peds_s: value }),
+    [patch],
+  );
+
+  const onAddCycle = useCallback(
+    (draft: { name: string; green_cars_s: number; green_peds_s: number }) => {
+      if (crossing === null) return;
+      void run(() =>
+        api.addSignalCycle(crossing.id, draft).then((cycle) => {
+          setCrossing((prev) => (prev ? { ...prev, cycles: [...prev.cycles, cycle] } : prev));
+        }),
+      );
+    },
+    [crossing, run],
+  );
+
+  const onDeleteCycle = useCallback(
+    (id: number) => {
+      void run(() =>
+        api.removeSignalCycle(id).then(() => {
+          setCrossing((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  cycles: prev.cycles.filter((c) => c.id !== id),
+                  active_cycle_id: prev.active_cycle_id === id ? null : prev.active_cycle_id,
+                }
+              : prev,
+          );
+        }),
+      );
+    },
+    [run],
+  );
+
   const selectedDevice = crossing?.its_devices.find((d) => d.id === selectedDeviceId) ?? null;
+  const statusLabel =
+    !crossing || crossing.signal_mode === "manual" || !live.label
+      ? ""
+      : live.label === "АУ"
+        ? "АУ"
+        : `${live.label} с`;
 
   return (
     <div className="relative h-full w-full">
@@ -149,6 +225,11 @@ export default function App() {
         onSelectDevice={onSelectDevice}
         generationMode={generationMode}
         onChangeCrossing={patch}
+        vehicleSignal={live.vehicle}
+        pedestrianSignal={live.pedestrian}
+        statusLabel={statusLabel}
+        onClickVehicleLight={openVehiclePicker}
+        onClickPedestrianLight={openPedestrianPicker}
       />
 
       <header className="pointer-events-none absolute top-4 left-4 z-10">
@@ -174,6 +255,33 @@ export default function App() {
             onClose={() => setSelectedDeviceId(null)}
           />
         )}
+        {pickerKind && crossing && (
+          <SignalPicker
+            kind={pickerKind}
+            vehicleValue={crossing.vehicle_signal}
+            pedestrianValue={crossing.pedestrian_signal}
+            isManual={crossing.signal_mode === "manual"}
+            busy={busy}
+            onPickVehicle={onPickVehicle}
+            onPickPedestrian={onPickPedestrian}
+            onClose={() => setPickerKind(null)}
+          />
+        )}
+        {crossing && (
+          <SignalModePanel
+            crossing={crossing}
+            busy={busy}
+            callPending={live.callPending}
+            onSetMode={onSetMode}
+            onSelectCycle={onSelectCycle}
+            onAddCycle={onAddCycle}
+            onDeleteCycle={onDeleteCycle}
+            onAllRedChange={onAllRedChange}
+            onButtonMinGreenChange={onButtonMinGreenChange}
+            onButtonPedsChange={onButtonPedsChange}
+            onPressButton={requestCall}
+          />
+        )}
         <InfoPanel
           crossings={crossings}
           selectedId={selectedId}
@@ -181,8 +289,6 @@ export default function App() {
           crossing={crossing}
           onLanesForward={onLanesForward}
           onLanesBackward={onLanesBackward}
-          onVehicleSignal={onVehicleSignal}
-          onPedestrianSignal={onPedestrianSignal}
           busy={busy}
           view={view}
           onView={setView}

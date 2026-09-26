@@ -6,12 +6,13 @@ import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
-import type { Crossing, CrossingPatch, DeviceType } from "../types";
+import type { Crossing, CrossingPatch, DeviceType, PedestrianSignal, VehicleSignal } from "../types";
 import { GenerationBadges } from "./GenerationBadges";
 import { ItsDevices, PlacementGhost } from "./ItsDevices";
 import { clampPlacement, clampToRoad, roadGeometry } from "./layout";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
+import { SignalStatusBadge } from "./SignalStatusBadge";
 import { TrafficSimulation } from "./TrafficSimulation";
 
 export type ViewName = "perspective" | "top" | "along" | "side";
@@ -75,6 +76,11 @@ export function SceneView({
   onSelectDevice,
   generationMode,
   onChangeCrossing,
+  vehicleSignal,
+  pedestrianSignal,
+  statusLabel,
+  onClickVehicleLight,
+  onClickPedestrianLight,
 }: {
   crossing: Crossing | null;
   view: ViewName;
@@ -84,6 +90,12 @@ export function SceneView({
   onSelectDevice?: (id: number) => void;
   generationMode?: boolean;
   onChangeCrossing?: (patch: CrossingPatch) => void;
+  vehicleSignal: VehicleSignal;
+  pedestrianSignal: PedestrianSignal;
+  /** "N с" / "АУ" над светофорами; "" — бейдж скрыт (ручной режим) */
+  statusLabel: string;
+  onClickVehicleLight?: () => void;
+  onClickPedestrianLight?: () => void;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
@@ -140,7 +152,14 @@ export function SceneView({
             onGroundPointerMove={placingType ? handleGroundMove : undefined}
             onGroundPointerLeave={placingType ? () => setHover(null) : undefined}
           />
-          <SignalMasts crossing={crossing} />
+          <SignalMasts
+            crossing={crossing}
+            vehicleSignal={vehicleSignal}
+            pedestrianSignal={pedestrianSignal}
+            onClickVehicle={onClickVehicleLight}
+            onClickPedestrian={onClickPedestrianLight}
+          />
+          <SignalStatusBadge crossing={crossing} label={statusLabel} />
           <ItsDevices
             crossing={crossing}
             selectable={!placingType}
@@ -148,7 +167,7 @@ export function SceneView({
             onSelect={onSelectDevice ?? (() => {})}
           />
           {placingType && hover && <PlacementGhost type={placingType} x={hover[0]} z={hover[1]} />}
-          <TrafficSimulation crossing={crossing} />
+          <TrafficSimulation crossing={crossing} vehicleSignal={vehicleSignal} pedestrianSignal={pedestrianSignal} />
           {generationMode && onChangeCrossing && (
             <GenerationBadges crossing={crossing} onChange={onChangeCrossing} />
           )}

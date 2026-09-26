@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Crossing, DeviceType, ItsDevice
+from app.models import Crossing, DeviceType, ItsDevice, SignalCycle
 from app.schemas import (
     CrossingBrief,
     CrossingIn,
@@ -15,6 +15,9 @@ from app.schemas import (
     ItsDeviceIn,
     ItsDeviceOut,
     ItsDeviceUpdate,
+    SignalCycleIn,
+    SignalCycleOut,
+    SignalCycleUpdate,
 )
 
 router = APIRouter(prefix="/api", tags=["crossings"])
@@ -37,6 +40,13 @@ async def _load_device(session: AsyncSession, device_id: int) -> ItsDevice:
     if device is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "объект не найден")
     return device
+
+
+async def _load_cycle(session: AsyncSession, cycle_id: int) -> SignalCycle:
+    cycle = await session.get(SignalCycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "цикл не найден")
+    return cycle
 
 
 @router.get("/crossings", response_model=list[CrossingBrief])
@@ -78,6 +88,13 @@ async def update_crossing(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "нужна хотя бы одна полоса — в любом направлении"
         )
+
+    if "active_cycle_id" in data and data["active_cycle_id"] is not None:
+        cycle = await session.get(SignalCycle, data["active_cycle_id"])
+        if cycle is None or cycle.crossing_id != crossing_id:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "цикл не найден у этого перехода"
+            )
 
     for key, value in data.items():
         setattr(crossing, key, value)
@@ -141,4 +158,35 @@ async def update_its_device(
 async def delete_its_device(device_id: int, session: AsyncSession = Depends(get_session)):
     device = await _load_device(session, device_id)
     await session.delete(device)
+    await session.commit()
+
+
+@router.post("/crossings/{crossing_id}/signal-cycles", response_model=SignalCycleOut, status_code=201)
+async def add_signal_cycle(
+    crossing_id: int, payload: SignalCycleIn, session: AsyncSession = Depends(get_session)
+):
+    await _load(session, crossing_id)
+    cycle = SignalCycle(crossing_id=crossing_id, **payload.model_dump())
+    session.add(cycle)
+    await session.commit()
+    await session.refresh(cycle)
+    return cycle
+
+
+@router.patch("/signal-cycles/{cycle_id}", response_model=SignalCycleOut)
+async def update_signal_cycle(
+    cycle_id: int, payload: SignalCycleUpdate, session: AsyncSession = Depends(get_session)
+):
+    cycle = await _load_cycle(session, cycle_id)
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(cycle, key, value)
+    await session.commit()
+    await session.refresh(cycle)
+    return cycle
+
+
+@router.delete("/signal-cycles/{cycle_id}", status_code=204)
+async def delete_signal_cycle(cycle_id: int, session: AsyncSession = Depends(get_session)):
+    cycle = await _load_cycle(session, cycle_id)
+    await session.delete(cycle)
     await session.commit()

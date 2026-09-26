@@ -28,6 +28,15 @@ class DeviceType(str, enum.Enum):
     LOOP = "loop"
 
 
+class SignalMode(str, enum.Enum):
+    """Режим управления светофором перехода."""
+
+    MANUAL = "manual"  # ручной выбор сигнала кликом по светофору
+    ADAPTIVE = "adaptive"  # заглушка: всегда зелёный пешеходам, красный машинам
+    CYCLE = "cycle"  # повторяющийся цикл из активного SignalCycle
+    BUTTON = "button"  # зелёный машинам, пока не нажата кнопка вызова
+
+
 vehicle_signal_enum = Enum(
     VehicleSignal, name="vehicle_signal", values_callable=lambda e: [m.value for m in e]
 )
@@ -36,6 +45,9 @@ pedestrian_signal_enum = Enum(
 )
 device_type_enum = Enum(
     DeviceType, name="its_device_type", values_callable=lambda e: [m.value for m in e]
+)
+signal_mode_enum = Enum(
+    SignalMode, name="signal_mode", values_callable=lambda e: [m.value for m in e]
 )
 
 
@@ -60,6 +72,9 @@ class Crossing(Base):
         CheckConstraint("vph_backward between 0 and 2000", name="ck_vph_backward"),
         CheckConstraint("peds_left_vph between 0 and 2000", name="ck_peds_left"),
         CheckConstraint("peds_right_vph between 0 and 2000", name="ck_peds_right"),
+        CheckConstraint("all_red_s between 1 and 15", name="ck_all_red_s"),
+        CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
+        CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -86,11 +101,36 @@ class Crossing(Base):
         pedestrian_signal_enum, default=PedestrianSignal.STOP
     )
 
+    # режим управления: см. SignalMode. В manual действуют vehicle_signal/
+    # pedestrian_signal напрямую (кликом по светофору); в остальных режимах
+    # их считает клиент по формулам ниже, эти поля — только "последнее
+    # известное" значение для отображения/совместимости.
+    signal_mode: Mapped[SignalMode] = mapped_column(signal_mode_enum, default=SignalMode.MANUAL)
+    active_cycle_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "signal_cycles.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_crossings_active_cycle",
+        ),
+        nullable=True,
+    )
+    all_red_s: Mapped[float] = mapped_column(Float, default=3.0)  # "красный всем" между фазами
+    button_min_green_s: Mapped[float] = mapped_column(Float, default=15.0)
+    button_peds_s: Mapped[float] = mapped_column(Float, default=15.0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     its_devices: Mapped[list[ItsDevice]] = relationship(
         back_populates="crossing", cascade="all, delete-orphan", lazy="selectin",
         order_by="ItsDevice.id",
+    )
+    cycles: Mapped[list[SignalCycle]] = relationship(
+        back_populates="crossing",
+        foreign_keys="SignalCycle.crossing_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="SignalCycle.id",
     )
 
 
@@ -141,3 +181,29 @@ class ItsDevice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     crossing: Mapped[Crossing] = relationship(back_populates="its_devices")
+
+
+class SignalCycle(Base):
+    """Один сохранённый цикл: сколько зелёного машинам и сколько пешеходам.
+
+    "Красный всем" между фазами общий для всех циклов перехода — берётся
+    из Crossing.all_red_s, здесь не хранится.
+    """
+
+    __tablename__ = "signal_cycles"
+    __table_args__ = (
+        CheckConstraint("green_cars_s between 3 and 180", name="ck_cycle_green_cars"),
+        CheckConstraint("green_peds_s between 3 and 120", name="ck_cycle_green_peds"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    crossing_id: Mapped[int] = mapped_column(
+        ForeignKey("crossings.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    green_cars_s: Mapped[float] = mapped_column(Float, default=40.0)
+    green_peds_s: Mapped[float] = mapped_column(Float, default=15.0)
+
+    crossing: Mapped[Crossing] = relationship(
+        back_populates="cycles", foreign_keys=[crossing_id]
+    )

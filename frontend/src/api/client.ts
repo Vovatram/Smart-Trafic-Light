@@ -5,6 +5,8 @@ import type {
   ItsDevice,
   ItsDeviceCreate,
   ItsDevicePatch,
+  SignalCycle,
+  SignalCyclePatch,
 } from "../types";
 
 const BASE = "/api";
@@ -35,4 +37,12 @@ export const api = {
   updateItsDevice: (id: number, patch: ItsDevicePatch) =>
     request<ItsDevice>(`/its-devices/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeItsDevice: (id: number) => request<void>(`/its-devices/${id}`, { method: "DELETE" }),
+  addSignalCycle: (crossingId: number, body: SignalCyclePatch & { name: string }) =>
+    request<SignalCycle>(`/crossings/${crossingId}/signal-cycles`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateSignalCycle: (id: number, patch: SignalCyclePatch) =>
+    request<SignalCycle>(`/signal-cycles/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  removeSignalCycle: (id: number) => request<void>(`/signal-cycles/${id}`, { method: "DELETE" }),
 };

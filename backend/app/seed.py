@@ -7,7 +7,7 @@ import asyncio
 from sqlalchemy import select
 
 from app.db import SessionLocal, engine
-from app.models import Crossing
+from app.models import Crossing, SignalCycle
 
 SLUG = "central"
 
@@ -27,6 +27,10 @@ async def seed() -> None:
             lanes_backward=3,
             road_length=40.0,
             crossing_width=3.0,
+            cycles=[
+                SignalCycle(name="Час пик", green_cars_s=60.0, green_peds_s=20.0),
+                SignalCycle(name="Меж пик", green_cars_s=40.0, green_peds_s=15.0),
+            ],
         )
         session.add(crossing)
         await session.commit()

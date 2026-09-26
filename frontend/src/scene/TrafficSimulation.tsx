@@ -2,7 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-import type { Crossing } from "../types";
+import type { Crossing, PedestrianSignal, VehicleSignal } from "../types";
 import { detectingColors, sensorDevices } from "./detection";
 import { laneCenterX, roadGeometry, type RoadGeometry } from "./layout";
 
@@ -153,8 +153,7 @@ function advanceWithGate(
  * иначе центр стоит перед линией, а капот (половина CAR_LENGTH) торчит
  * почти до середины перехода. Добавляем половину длины кузова к отступу.
  */
-function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
-  const green = crossing.vehicle_signal === "green";
+function advanceCars(pool: Slot[], green: boolean, dt: number, geo: RoadGeometry) {
   const stopZ = geo.crossingHalf + geo.stopOffset + CAR_LENGTH / 2;
   advanceWithGate(pool, dt, "z", CAR_SPEED, CAR_MIN_GAP, green, stopZ, {
     min: -geo.roadLength,
@@ -167,8 +166,7 @@ function advanceCars(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeom
  * останавливаются на границе проезжей части. Кто уже ступил на переход,
  * когда сигнал был "идите", договаривает его до конца при любом сигнале.
  */
-function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeometry) {
-  const walk = crossing.pedestrian_signal === "walk";
+function advancePeds(pool: Slot[], walk: boolean, dt: number, geo: RoadGeometry) {
   // "граница дороги" в терминах gate — расстояние от центра (0) до края
   // проезжей части ближе к её "своей" стороне (leftEdge/rightEdge — со
   // знаком, gate в advanceWithGate считается симметрично от 0)
@@ -263,7 +261,16 @@ function applyDetection(
  * только пока агент виден хотя бы одному датчику (камере/микроволновому),
  * цветом этого датчика (двумя цветами, если видят двое).
  */
-export function TrafficSimulation({ crossing }: { crossing: Crossing }) {
+export function TrafficSimulation({
+  crossing,
+  vehicleSignal,
+  pedestrianSignal,
+}: {
+  crossing: Crossing;
+  /** живой сигнал из useSignalState — не обязательно crossing.vehicle_signal (тот стоит только в manual) */
+  vehicleSignal: VehicleSignal;
+  pedestrianSignal: PedestrianSignal;
+}) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const sensors = useMemo(() => sensorDevices(crossing.its_devices), [crossing.its_devices]);
 
@@ -282,8 +289,8 @@ export function TrafficSimulation({ crossing }: { crossing: Crossing }) {
 
     trySpawnCars(cars.current, geo, crossing, dt);
     trySpawnPeds(peds.current, geo, crossing, dt);
-    advanceCars(cars.current, crossing, dt, geo);
-    advancePeds(peds.current, crossing, dt, geo);
+    advanceCars(cars.current, vehicleSignal === "green", dt, geo);
+    advancePeds(peds.current, pedestrianSignal === "walk", dt, geo);
 
     cars.current.forEach((slot, i) =>
       applyDetection(
