@@ -126,7 +126,9 @@ function advanceWithGate(
   for (const s of pool) {
     if (!s.active) continue;
     const coord = axis === "z" ? s.z : s.x;
-    const crossedGate = s.dir > 0 ? coord >= -gate : coord <= gate;
+    // строго ">" / "<": стоя ровно на линии агент ещё не "пересёк" её — иначе
+    // на кадре после остановки coord === -gate и "уже пересёк" пускает его дальше
+    const crossedGate = s.dir > 0 ? coord > -gate : coord < gate;
     const limited = gapLimitedSpeed(pool, s, axis, speed, minGap);
     let next = coord + s.dir * limited * dt;
     if (!go && !crossedGate) {
@@ -173,7 +175,7 @@ function advancePeds(pool: Slot[], crossing: Crossing, dt: number, geo: RoadGeom
   for (const s of pool) {
     if (!s.active) continue;
     const gate = s.dir > 0 ? gateLeft : gateRight;
-    const crossedGate = s.dir > 0 ? s.x >= -gateLeft : s.x <= gateRight;
+    const crossedGate = s.dir > 0 ? s.x > -gateLeft : s.x < gateRight;
     const limited = gapLimitedSpeed(pool, s, "x", PED_SPEED, PED_MIN_GAP);
     let next = s.x + s.dir * limited * dt;
     if (!walk && !crossedGate) {
