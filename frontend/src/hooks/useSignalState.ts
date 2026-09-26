@@ -51,15 +51,16 @@ const IDLE: LiveSignal = {
  */
 function cyclePhase(
   greenCarsS: number,
-  allRedS: number,
+  allRedAfterCarsS: number,
   greenPedsS: number,
+  allRedAfterPedsS: number,
   t: number,
 ): Omit<LiveSignal, "vehicleLabel" | "pedestrianLabel" | "callPending"> {
   const p0 = greenCarsS; // конец зелёного машинам
   const p1 = p0 + YELLOW_S; // конец жёлтого
-  const p2 = p1 + allRedS; // конец первого "красный всем"
+  const p2 = p1 + allRedAfterCarsS; // конец первого "красный всем" (после машин)
   const p3 = p2 + greenPedsS; // конец зелёного пешеходам
-  const total = p3 + allRedS; // конец второго "красный всем" = длина цикла
+  const total = p3 + allRedAfterPedsS; // конец второго "красный всем" (после пешеходов) = длина цикла
 
   let vehicle: VehicleSignal;
   let vehicleChangeAt: number;
@@ -167,9 +168,20 @@ export function useSignalState(crossing: Crossing | null): {
       if (!active) {
         return { ...IDLE, vehicleLabel: "нет цикла", pedestrianLabel: "нет цикла" };
       }
-      const total = active.green_cars_s + YELLOW_S + active.green_peds_s + crossing.all_red_s * 2;
+      const total =
+        active.green_cars_s +
+        YELLOW_S +
+        crossing.all_red_after_cars_s +
+        active.green_peds_s +
+        crossing.all_red_after_peds_s;
       const t = (performance.now() / 1000) % total;
-      const phase = cyclePhase(active.green_cars_s, crossing.all_red_s, active.green_peds_s, t);
+      const phase = cyclePhase(
+        active.green_cars_s,
+        crossing.all_red_after_cars_s,
+        active.green_peds_s,
+        crossing.all_red_after_peds_s,
+        t,
+      );
       return {
         ...phase,
         vehicleLabel: label(phase.vehicleSecondsLeft),
@@ -186,7 +198,8 @@ export function useSignalState(crossing: Crossing | null): {
     st.elapsed += dt;
     const minGreen = crossing.button_min_green_s;
     const pedsS = crossing.button_peds_s;
-    const allRedS = crossing.all_red_s;
+    const allRedAfterCarsS = crossing.all_red_after_cars_s;
+    const allRedAfterPedsS = crossing.all_red_after_peds_s;
 
     if (st.phase === "cars" && st.callPending && st.elapsed >= minGreen) {
       st.phase = "yellow";
@@ -198,7 +211,7 @@ export function useSignalState(crossing: Crossing | null): {
       case "cars": {
         const vehicleSecondsLeft = st.callPending ? Math.max(0, minGreen - st.elapsed) : null;
         const pedestrianSecondsLeft =
-          vehicleSecondsLeft === null ? null : vehicleSecondsLeft + YELLOW_S + allRedS;
+          vehicleSecondsLeft === null ? null : vehicleSecondsLeft + YELLOW_S + allRedAfterCarsS;
         return {
           vehicle: "green",
           pedestrian: "stop",
@@ -213,13 +226,14 @@ export function useSignalState(crossing: Crossing | null): {
         if (st.elapsed >= YELLOW_S) {
           st.phase = "clear_to_peds";
           st.elapsed = 0;
+          const vehicleSecondsLeft = allRedAfterCarsS + pedsS + allRedAfterPedsS;
           return {
             vehicle: "red",
             pedestrian: "stop",
-            vehicleSecondsLeft: allRedS + pedsS + allRedS,
-            pedestrianSecondsLeft: allRedS,
-            vehicleLabel: label(allRedS + pedsS + allRedS),
-            pedestrianLabel: label(allRedS),
+            vehicleSecondsLeft,
+            pedestrianSecondsLeft: allRedAfterCarsS,
+            vehicleLabel: label(vehicleSecondsLeft),
+            pedestrianLabel: label(allRedAfterCarsS),
             callPending: false,
           };
         }
@@ -228,33 +242,35 @@ export function useSignalState(crossing: Crossing | null): {
           vehicle: "yellow",
           pedestrian: "stop",
           vehicleSecondsLeft,
-          pedestrianSecondsLeft: vehicleSecondsLeft + allRedS,
+          pedestrianSecondsLeft: vehicleSecondsLeft + allRedAfterCarsS,
           vehicleLabel: label(vehicleSecondsLeft),
-          pedestrianLabel: label(vehicleSecondsLeft + allRedS),
+          pedestrianLabel: label(vehicleSecondsLeft + allRedAfterCarsS),
           callPending: false,
         };
       }
       case "clear_to_peds": {
-        if (st.elapsed >= allRedS) {
+        if (st.elapsed >= allRedAfterCarsS) {
           st.phase = "peds";
           st.elapsed = 0;
+          const vehicleSecondsLeft = pedsS + allRedAfterPedsS;
           return {
             vehicle: "red",
             pedestrian: "walk",
-            vehicleSecondsLeft: pedsS + allRedS,
+            vehicleSecondsLeft,
             pedestrianSecondsLeft: pedsS,
-            vehicleLabel: label(pedsS + allRedS),
+            vehicleLabel: label(vehicleSecondsLeft),
             pedestrianLabel: label(pedsS),
             callPending: false,
           };
         }
-        const pedestrianSecondsLeft = allRedS - st.elapsed;
+        const pedestrianSecondsLeft = allRedAfterCarsS - st.elapsed;
+        const vehicleSecondsLeft = pedestrianSecondsLeft + pedsS + allRedAfterPedsS;
         return {
           vehicle: "red",
           pedestrian: "stop",
-          vehicleSecondsLeft: pedestrianSecondsLeft + pedsS + allRedS,
+          vehicleSecondsLeft,
           pedestrianSecondsLeft,
-          vehicleLabel: label(pedestrianSecondsLeft + pedsS + allRedS),
+          vehicleLabel: label(vehicleSecondsLeft),
           pedestrianLabel: label(pedestrianSecondsLeft),
           callPending: false,
         };
@@ -266,27 +282,28 @@ export function useSignalState(crossing: Crossing | null): {
           return {
             vehicle: "red",
             pedestrian: "stop",
-            vehicleSecondsLeft: allRedS,
+            vehicleSecondsLeft: allRedAfterPedsS,
             pedestrianSecondsLeft: null,
-            vehicleLabel: label(allRedS),
+            vehicleLabel: label(allRedAfterPedsS),
             pedestrianLabel: "АУ",
             callPending: false,
           };
         }
         const pedestrianSecondsLeft = pedsS - st.elapsed;
+        const vehicleSecondsLeft = pedestrianSecondsLeft + allRedAfterPedsS;
         return {
           vehicle: "red",
           pedestrian: "walk",
-          vehicleSecondsLeft: pedestrianSecondsLeft + allRedS,
+          vehicleSecondsLeft,
           pedestrianSecondsLeft,
-          vehicleLabel: label(pedestrianSecondsLeft + allRedS),
+          vehicleLabel: label(vehicleSecondsLeft),
           pedestrianLabel: label(pedestrianSecondsLeft),
           callPending: false,
         };
       }
       case "clear_to_cars":
       default: {
-        if (st.elapsed >= allRedS) {
+        if (st.elapsed >= allRedAfterPedsS) {
           st.phase = "cars";
           st.elapsed = 0;
           return {
@@ -299,7 +316,7 @@ export function useSignalState(crossing: Crossing | null): {
             callPending: false,
           };
         }
-        const vehicleSecondsLeft = allRedS - st.elapsed;
+        const vehicleSecondsLeft = allRedAfterPedsS - st.elapsed;
         return {
           vehicle: "red",
           pedestrian: "stop",

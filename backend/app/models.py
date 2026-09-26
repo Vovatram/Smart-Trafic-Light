@@ -72,7 +72,8 @@ class Crossing(Base):
         CheckConstraint("vph_backward between 0 and 2000", name="ck_vph_backward"),
         CheckConstraint("peds_left_vph between 0 and 2000", name="ck_peds_left"),
         CheckConstraint("peds_right_vph between 0 and 2000", name="ck_peds_right"),
-        CheckConstraint("all_red_s between 1 and 15", name="ck_all_red_s"),
+        CheckConstraint("all_red_after_cars_s between 1 and 15", name="ck_all_red_after_cars"),
+        CheckConstraint("all_red_after_peds_s between 1 and 15", name="ck_all_red_after_peds"),
         CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
         CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
     )
@@ -115,7 +116,10 @@ class Crossing(Base):
         ),
         nullable=True,
     )
-    all_red_s: Mapped[float] = mapped_column(Float, default=3.0)  # "красный всем" между фазами
+    # две независимых фазы "красный всем": после зелёного машинам (через
+    # жёлтый) и после зелёного пешеходам — задаются раздельно
+    all_red_after_cars_s: Mapped[float] = mapped_column(Float, default=3.0)
+    all_red_after_peds_s: Mapped[float] = mapped_column(Float, default=3.0)
     button_min_green_s: Mapped[float] = mapped_column(Float, default=15.0)
     button_peds_s: Mapped[float] = mapped_column(Float, default=15.0)
 

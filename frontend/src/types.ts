@@ -56,8 +56,10 @@ export interface Crossing extends CrossingBrief {
   peds_right_vph: number;
   signal_mode: SignalMode;
   active_cycle_id: number | null;
-  /** "красный всем" между фазами — и в циклах, и в кнопочном режиме */
-  all_red_s: number;
+  /** "красный всем" после зелёного машинам (через жёлтый) */
+  all_red_after_cars_s: number;
+  /** "красный всем" после зелёного пешеходам */
+  all_red_after_peds_s: number;
   /** минимум зелёного машинам в режиме "Кнопка", прежде чем честь вызов */
   button_min_green_s: number;
   /** длительность зелёного пешеходам в режиме "Кнопка" после срабатывания */
@@ -84,7 +86,8 @@ export type CrossingPatch = Partial<
     | "peds_right_vph"
     | "signal_mode"
     | "active_cycle_id"
-    | "all_red_s"
+    | "all_red_after_cars_s"
+    | "all_red_after_peds_s"
     | "button_min_green_s"
     | "button_peds_s"
   >

@@ -7,7 +7,7 @@ import { detectingColors, sensorDevices } from "./detection";
 import { laneCenterX, roadGeometry, type RoadGeometry } from "./layout";
 
 const CAR_SPEED = 8; // м/с
-const PED_SPEED = 1.8; // м/с — ускоренный шаг, чтобы не мозолить глаза медленной анимацией
+const PED_SPEED = 2.6; // м/с — заметно быстрый шаг для наглядности сцены
 const CAR_POOL = 24;
 const PED_POOL = 24;
 const CAR_LENGTH = 4.4;

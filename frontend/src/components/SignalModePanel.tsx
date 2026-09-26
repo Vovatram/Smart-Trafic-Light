@@ -27,7 +27,8 @@ export function SignalModePanel({
   onSelectCycle,
   onAddCycle,
   onDeleteCycle,
-  onAllRedChange,
+  onAllRedAfterCarsChange,
+  onAllRedAfterPedsChange,
   onButtonMinGreenChange,
   onButtonPedsChange,
   onPressButton,
@@ -40,7 +41,8 @@ export function SignalModePanel({
   onSelectCycle: (id: number) => void;
   onAddCycle: (draft: CycleDraft) => void;
   onDeleteCycle: (id: number) => void;
-  onAllRedChange: (value: number) => void;
+  onAllRedAfterCarsChange: (value: number) => void;
+  onAllRedAfterPedsChange: (value: number) => void;
   onButtonMinGreenChange: (value: number) => void;
   onButtonPedsChange: (value: number) => void;
   onPressButton: () => void;
@@ -189,16 +191,26 @@ export function SignalModePanel({
         )}
 
         {crossing.signal_mode !== "manual" && (
-          <div className="border-t border-slate-800 pt-3">
+          <div className="space-y-2 border-t border-slate-800 pt-3">
             <Stepper
-              label="Красный всем между фазами"
-              value={crossing.all_red_s}
+              label="Красный всем после машин"
+              value={crossing.all_red_after_cars_s}
               unit=" с"
               min={1}
               max={15}
               step={1}
               disabled={busy}
-              onChange={onAllRedChange}
+              onChange={onAllRedAfterCarsChange}
+            />
+            <Stepper
+              label="Красный всем после пешеходов"
+              value={crossing.all_red_after_peds_s}
+              unit=" с"
+              min={1}
+              max={15}
+              step={1}
+              disabled={busy}
+              onChange={onAllRedAfterPedsChange}
             />
           </div>
         )}

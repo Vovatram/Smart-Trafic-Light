@@ -165,7 +165,14 @@ export default function App() {
   // --- режим управления: ручной / адаптивный / циклы / кнопка ---
   const onSetMode = useCallback((mode: SignalMode) => patch({ signal_mode: mode }), [patch]);
   const onSelectCycle = useCallback((id: number) => patch({ active_cycle_id: id }), [patch]);
-  const onAllRedChange = useCallback((value: number) => patch({ all_red_s: value }), [patch]);
+  const onAllRedAfterCarsChange = useCallback(
+    (value: number) => patch({ all_red_after_cars_s: value }),
+    [patch],
+  );
+  const onAllRedAfterPedsChange = useCallback(
+    (value: number) => patch({ all_red_after_peds_s: value }),
+    [patch],
+  );
   const onButtonMinGreenChange = useCallback(
     (value: number) => patch({ button_min_green_s: value }),
     [patch],
@@ -279,7 +286,8 @@ export default function App() {
             onSelectCycle={onSelectCycle}
             onAddCycle={onAddCycle}
             onDeleteCycle={onDeleteCycle}
-            onAllRedChange={onAllRedChange}
+            onAllRedAfterCarsChange={onAllRedAfterCarsChange}
+            onAllRedAfterPedsChange={onAllRedAfterPedsChange}
             onButtonMinGreenChange={onButtonMinGreenChange}
             onButtonPedsChange={onButtonPedsChange}
             onPressButton={requestCall}

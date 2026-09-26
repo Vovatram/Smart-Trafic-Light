@@ -48,7 +48,8 @@ class CrossingUpdate(BaseModel):
     peds_right_vph: float | None = Field(default=None, ge=0, le=2000)
     signal_mode: SignalMode | None = None
     active_cycle_id: int | None = None
-    all_red_s: float | None = Field(default=None, ge=1, le=15)
+    all_red_after_cars_s: float | None = Field(default=None, ge=1, le=15)
+    all_red_after_peds_s: float | None = Field(default=None, ge=1, le=15)
     button_min_green_s: float | None = Field(default=None, ge=3, le=180)
     button_peds_s: float | None = Field(default=None, ge=3, le=120)
 
@@ -152,7 +153,8 @@ class CrossingOut(BaseModel):
     peds_right_vph: float
     signal_mode: SignalMode
     active_cycle_id: int | None
-    all_red_s: float
+    all_red_after_cars_s: float
+    all_red_after_peds_s: float
     button_min_green_s: float
     button_peds_s: float
     created_at: datetime
