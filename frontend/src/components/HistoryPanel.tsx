@@ -36,10 +36,12 @@ export function HistoryPanel({ playback }: { playback: HistoryPlayback }) {
       </div>
 
       <div className="max-h-[40vh] overflow-y-auto px-3 py-3">
-        {error && <p className="text-sm text-rose-300">{error}</p>}
-        {!error && loading && <p className="text-sm text-slate-500">Загрузка…</p>}
-        {!error && !loading && tab === "journal" && <JournalTable entries={visibleLogs} />}
-        {!error && !loading && tab === "charts" && <IntensityCharts snapshots={visibleMetrics} />}
+        {/* error — предупреждение по одному из трёх независимых запросов
+            (allSettled), не блокирует показ того, что успешно загрузилось */}
+        {error && <p className="mb-2 text-xs text-rose-300">{error}</p>}
+        {loading && <p className="text-sm text-slate-500">Загрузка…</p>}
+        {!loading && tab === "journal" && <JournalTable entries={visibleLogs} />}
+        {!loading && tab === "charts" && <IntensityCharts snapshots={visibleMetrics} />}
       </div>
 
       <TimelineControls playback={playback} />

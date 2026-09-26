@@ -82,17 +82,21 @@ export function useHistoryPlayback(crossing: Crossing | null): HistoryPlayback {
     setLoading(true);
     setError(null);
     const deviceId = target === "crossing" ? 0 : target;
-    Promise.all([
+    // allSettled, не all: журнал/графики/replay независимы — если один
+    // запрос упал (например, старый бэкенд без свежего роута), это не должно
+    // стирать уже успешно полученные данные двух остальных
+    Promise.allSettled([
       api.logs(crossingId, deviceId),
       api.metrics(crossingId),
       api.sceneSnapshots(crossingId),
     ])
-      .then(([logEntries, snapshots, sceneRows]) => {
-        setLogs(logEntries);
-        setMetrics(snapshots);
-        setSceneSnapshots(sceneRows);
+      .then(([logsResult, metricsResult, sceneResult]) => {
+        if (logsResult.status === "fulfilled") setLogs(logsResult.value);
+        if (metricsResult.status === "fulfilled") setMetrics(metricsResult.value);
+        if (sceneResult.status === "fulfilled") setSceneSnapshots(sceneResult.value);
+        const failed = [logsResult, metricsResult, sceneResult].find((r) => r.status === "rejected");
+        setError(failed && failed.status === "rejected" ? (failed.reason as Error).message : null);
       })
-      .catch((cause: Error) => setError(cause.message))
       .finally(() => setLoading(false));
   }, [open, crossingId, target]);
 
