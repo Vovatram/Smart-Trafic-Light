@@ -151,10 +151,11 @@ export function InfoPanel({
                 Режим установки: <span className="font-medium">{DEVICE_LABEL[placingType]}</span>
               </p>
               <p className="text-[11px] leading-snug text-slate-500">
-                Кликните по сцене — объект появится в этой точке. Можно ставить несколько подряд.
+                Водите мышью по сцене — полупрозрачный силуэт показывает, где встанет объект.
+                Кликните, чтобы поставить его и сразу перейти к настройке.
               </p>
-              <Button variant="primary" className="w-full" onClick={onStopPlacing}>
-                Готово
+              <Button className="w-full" onClick={onStopPlacing}>
+                Отмена
               </Button>
             </div>
           ) : (

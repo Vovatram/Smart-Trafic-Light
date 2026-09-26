@@ -1,13 +1,13 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 import type { Crossing, DeviceType } from "../types";
-import { ItsDevices } from "./ItsDevices";
+import { ItsDevices, PlacementGhost } from "./ItsDevices";
 import { clampPlacement, clampToRoad, roadGeometry } from "./layout";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
@@ -69,28 +69,42 @@ export function SceneView({
   view,
   placingType,
   onPlace,
+  editingId,
   onSelectDevice,
 }: {
   crossing: Crossing | null;
   view: ViewName;
   placingType?: DeviceType | null;
   onPlace?: (x: number, z: number) => void;
+  editingId?: number | null;
   onSelectDevice?: (id: number) => void;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const roadLength = crossing?.road_length ?? 40;
   const positions = viewPositions(roadLength);
+  const [hover, setHover] = useState<[number, number] | null>(null);
+
+  const clampForPlacement = (px: number, pz: number): [number, number] => {
+    const geo = roadGeometry(crossing!);
+    return placingType === "loop" ? clampToRoad(geo, px, pz) : clampPlacement(geo, px, pz);
+  };
+
+  const handleGroundMove = (event: ThreeEvent<PointerEvent>) => {
+    if (!placingType || !crossing) return;
+    setHover(clampForPlacement(event.point.x, event.point.z));
+  };
 
   const handleGroundClick = (event: ThreeEvent<MouseEvent>) => {
     if (!placingType || !crossing || !onPlace) return;
     event.stopPropagation();
-    const geo = roadGeometry(crossing);
-    const [x, z] =
-      placingType === "loop"
-        ? clampToRoad(geo, event.point.x, event.point.z)
-        : clampPlacement(geo, event.point.x, event.point.z);
+    const [x, z] = clampForPlacement(event.point.x, event.point.z);
     onPlace(x, z);
+    setHover(null);
   };
+
+  useEffect(() => {
+    if (!placingType) setHover(null);
+  }, [placingType]);
 
   return (
     <Canvas shadows camera={{ position: positions.perspective, fov: 42, near: 0.5, far: 900 }} dpr={[1, 2]}>
@@ -114,13 +128,20 @@ export function SceneView({
 
       {crossing && (
         <>
-          <Roads crossing={crossing} onGroundClick={placingType ? handleGroundClick : undefined} />
+          <Roads
+            crossing={crossing}
+            onGroundClick={placingType ? handleGroundClick : undefined}
+            onGroundPointerMove={placingType ? handleGroundMove : undefined}
+            onGroundPointerLeave={placingType ? () => setHover(null) : undefined}
+          />
           <SignalMasts crossing={crossing} />
           <ItsDevices
             crossing={crossing}
             selectable={!placingType}
+            editingId={editingId ?? null}
             onSelect={onSelectDevice ?? (() => {})}
           />
+          {placingType && hover && <PlacementGhost type={placingType} x={hover[0]} z={hover[1]} />}
         </>
       )}
 

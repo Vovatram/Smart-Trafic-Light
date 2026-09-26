@@ -36,6 +36,7 @@ export function Stepper({
   step = 1,
   onChange,
   disabled,
+  wrap = false,
 }: {
   label: string;
   value: number;
@@ -45,15 +46,22 @@ export function Stepper({
   step?: number;
   onChange: (value: number) => void;
   disabled?: boolean;
+  /** Циклический диапазон [min, max): "-" на min переходит к верхней границе, и наоборот. */
+  wrap?: boolean;
 }) {
   const round = (n: number) => Math.round(n * 100) / 100;
+  const clamp = (n: number) => {
+    if (!wrap) return round(Math.min(max, Math.max(min, n)));
+    const period = max - min;
+    return round(min + (((n - min) % period) + period) % period);
+  };
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm text-slate-300">{label}</span>
       <div className="flex items-center gap-1.5">
         <Button
-          disabled={disabled || value <= min}
-          onClick={() => onChange(round(Math.max(min, value - step)))}
+          disabled={disabled || (!wrap && value <= min)}
+          onClick={() => onChange(clamp(value - step))}
           className="!px-2 !py-1"
         >
           −
@@ -63,8 +71,8 @@ export function Stepper({
           {unit}
         </span>
         <Button
-          disabled={disabled || value >= max}
-          onClick={() => onChange(round(Math.min(max, value + step)))}
+          disabled={disabled || (!wrap && value >= max)}
+          onClick={() => onChange(clamp(value + step))}
           className="!px-2 !py-1"
         >
           +

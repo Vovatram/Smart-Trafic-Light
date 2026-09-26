@@ -128,9 +128,13 @@ function useZebra(crossing: Crossing): Box[] {
 export function Roads({
   crossing,
   onGroundClick,
+  onGroundPointerMove,
+  onGroundPointerLeave,
 }: {
   crossing: Crossing;
   onGroundClick?: (event: ThreeEvent<MouseEvent>) => void;
+  onGroundPointerMove?: (event: ThreeEvent<PointerEvent>) => void;
+  onGroundPointerLeave?: () => void;
 }) {
   const markings = useMarkings(crossing);
   const zebra = useZebra(crossing);
@@ -145,6 +149,8 @@ export function Roads({
         position={[0, -0.02, 0]}
         receiveShadow
         onClick={onGroundClick}
+        onPointerMove={onGroundPointerMove}
+        onPointerLeave={onGroundPointerLeave}
       >
         <planeGeometry args={[width + 100, (geo.roadLength + 30) * 2]} />
         <meshStandardMaterial color="#141821" roughness={1} />

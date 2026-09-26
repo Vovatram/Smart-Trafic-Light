@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
-import type { Crossing, ItsDevice } from "../types";
+import type { Crossing, DeviceType, ItsDevice } from "../types";
 
 const DEG2RAD = Math.PI / 180;
 const POLE_COLOR = "#3b4252";
@@ -32,7 +32,7 @@ function FovWedge({ halfAngleDeg, length, color }: { halfAngleDeg: number; lengt
   );
 }
 
-function CameraHead({ device }: { device: ItsDevice }) {
+function CameraHead({ device, showWedge }: { device: ItsDevice; showWedge: boolean }) {
   return (
     <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
       <mesh castShadow>
@@ -47,16 +47,18 @@ function CameraHead({ device }: { device: ItsDevice }) {
         <sphereGeometry args={[0.03, 8, 8]} />
         <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.5} />
       </mesh>
-      <FovWedge
-        halfAngleDeg={(device.fov_deg ?? 60) / 2}
-        length={device.view_radius ?? 35}
-        color="#facc15"
-      />
+      {showWedge && (
+        <FovWedge
+          halfAngleDeg={(device.fov_deg ?? 60) / 2}
+          length={device.view_radius ?? 35}
+          color="#facc15"
+        />
+      )}
     </group>
   );
 }
 
-function MicrowaveHead({ device }: { device: ItsDevice }) {
+function MicrowaveHead({ device, showWedge }: { device: ItsDevice; showWedge: boolean }) {
   return (
     <group rotation={[0, (device.rotation_deg ?? 0) * DEG2RAD, 0]}>
       <mesh castShadow>
@@ -67,11 +69,13 @@ function MicrowaveHead({ device }: { device: ItsDevice }) {
         <torusGeometry args={[0.11, 0.02, 8, 16]} />
         <meshStandardMaterial color="#a78bfa" emissive="#a78bfa" emissiveIntensity={0.6} />
       </mesh>
-      <FovWedge
-        halfAngleDeg={(device.fov_deg ?? 25) / 2}
-        length={device.view_radius ?? 18}
-        color="#38bdf8"
-      />
+      {showWedge && (
+        <FovWedge
+          halfAngleDeg={(device.fov_deg ?? 25) / 2}
+          length={device.view_radius ?? 18}
+          color="#38bdf8"
+        />
+      )}
     </group>
   );
 }
@@ -79,10 +83,12 @@ function MicrowaveHead({ device }: { device: ItsDevice }) {
 function PoleDevice({
   device,
   selectable,
+  showWedge,
   onSelect,
 }: {
   device: ItsDevice;
   selectable: boolean;
+  showWedge: boolean;
   onSelect: (id: number) => void;
 }) {
   const height = device.height ?? 5;
@@ -103,7 +109,11 @@ function PoleDevice({
         <meshStandardMaterial color={POLE_COLOR} roughness={0.6} metalness={0.3} />
       </mesh>
       <group position={[0, height, 0]}>
-        {device.device_type === "camera" ? <CameraHead device={device} /> : <MicrowaveHead device={device} />}
+        {device.device_type === "camera" ? (
+          <CameraHead device={device} showWedge={showWedge} />
+        ) : (
+          <MicrowaveHead device={device} showWedge={showWedge} />
+        )}
       </group>
     </group>
   );
@@ -124,7 +134,6 @@ function LoopDevice({
     if (selectable) onSelect(device.id);
   };
 
-  const edge = 0.08;
   return (
     <group
       position={[device.x, 0.03, device.z]}
@@ -132,9 +141,18 @@ function LoopDevice({
       onPointerOver={() => selectable && (document.body.style.cursor = "pointer")}
       onPointerOut={() => (document.body.style.cursor = "auto")}
     >
+      <LoopOutline size={size} color="#22d3ee" fillOpacity={0.1} />
+    </group>
+  );
+}
+
+function LoopOutline({ size, color, fillOpacity }: { size: number; color: string; fillOpacity: number }) {
+  const edge = 0.08;
+  return (
+    <>
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[size, size]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.1} depthWrite={false} />
+        <meshBasicMaterial color={color} transparent opacity={fillOpacity} depthWrite={false} />
       </mesh>
       {[
         [0, size / 2 - edge / 2, size, edge],
@@ -144,20 +162,23 @@ function LoopDevice({
       ].map(([ex, ez, sx, sz], i) => (
         <mesh key={i} position={[ex, 0.001, ez]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[sx, sz]} />
-          <meshBasicMaterial color="#22d3ee" />
+          <meshBasicMaterial color={color} transparent opacity={Math.min(1, fillOpacity * 8)} depthWrite={false} />
         </mesh>
       ))}
-    </group>
+    </>
   );
 }
 
 export function ItsDevices({
   crossing,
   selectable,
+  editingId,
   onSelect,
 }: {
   crossing: Crossing;
   selectable: boolean;
+  /** id объекта, который сейчас редактируется — только у него виден сектор обзора */
+  editingId: number | null;
   onSelect: (id: number) => void;
 }) {
   return (
@@ -166,9 +187,57 @@ export function ItsDevices({
         device.device_type === "loop" ? (
           <LoopDevice key={device.id} device={device} selectable={selectable} onSelect={onSelect} />
         ) : (
-          <PoleDevice key={device.id} device={device} selectable={selectable} onSelect={onSelect} />
+          <PoleDevice
+            key={device.id}
+            device={device}
+            selectable={selectable}
+            showWedge={device.id === editingId}
+            onSelect={onSelect}
+          />
         ),
       )}
+    </group>
+  );
+}
+
+const GHOST_DEFAULTS: Record<DeviceType, { height?: number; loopLength?: number }> = {
+  camera: { height: 5 },
+  microwave: { height: 5 },
+  loop: { loopLength: 2 },
+};
+
+/** Полупрозрачный предпросмотр — куда встанет объект, если кликнуть сейчас. */
+export function PlacementGhost({ type, x, z }: { type: DeviceType; x: number; z: number }) {
+  const defaults = GHOST_DEFAULTS[type];
+
+  if (type === "loop") {
+    return (
+      <group position={[x, 0.04, z]}>
+        <LoopOutline size={defaults.loopLength ?? 2} color="#67e8f9" fillOpacity={0.22} />
+      </group>
+    );
+  }
+
+  const height = defaults.height ?? 5;
+  return (
+    <group position={[x, 0, z]}>
+      <mesh position={[0, height / 2, 0]}>
+        <cylinderGeometry args={[0.08, 0.11, height, 12]} />
+        <meshStandardMaterial color={POLE_COLOR} transparent opacity={0.45} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, height, 0]}>
+        <boxGeometry args={[0.28, 0.28, type === "camera" ? 0.5 : 0.22]} />
+        <meshStandardMaterial
+          color={type === "camera" ? "#e5e7eb" : "#4c1d95"}
+          transparent
+          opacity={0.55}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.35, 0.42, 24]} />
+        <meshBasicMaterial color="#67e8f9" transparent opacity={0.6} depthWrite={false} />
+      </mesh>
     </group>
   );
 }

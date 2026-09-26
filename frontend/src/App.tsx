@@ -87,6 +87,9 @@ export default function App() {
       void run(() =>
         api.addItsDevice(crossing.id, { device_type: placingType, x, z }).then((device) => {
           setCrossing((prev) => (prev ? { ...prev, its_devices: [...prev.its_devices, device] } : prev));
+          // установили объект — сразу выходим из режима установки и открываем его редактирование
+          setPlacingType(null);
+          setSelectedDeviceId(device.id);
         }),
       );
     },
@@ -132,6 +135,7 @@ export default function App() {
         view={view}
         placingType={placingType}
         onPlace={onPlace}
+        editingId={selectedDeviceId}
         onSelectDevice={onSelectDevice}
       />
 
@@ -149,6 +153,15 @@ export default function App() {
         className="absolute top-4 right-4 z-10 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto"
         style={{ maxHeight: "calc(100vh - 2rem)" }}
       >
+        {selectedDevice && (
+          <DeviceEditor
+            device={selectedDevice}
+            busy={busy}
+            onChange={(devicePatch) => onChangeDevice(selectedDevice.id, devicePatch)}
+            onDelete={() => onDeleteDevice(selectedDevice.id)}
+            onClose={() => setSelectedDeviceId(null)}
+          />
+        )}
         <InfoPanel
           crossings={crossings}
           selectedId={selectedId}
@@ -166,16 +179,6 @@ export default function App() {
           onStopPlacing={onStopPlacing}
         />
       </aside>
-
-      {selectedDevice && (
-        <DeviceEditor
-          device={selectedDevice}
-          busy={busy}
-          onChange={(devicePatch) => onChangeDevice(selectedDevice.id, devicePatch)}
-          onDelete={() => onDeleteDevice(selectedDevice.id)}
-          onClose={() => setSelectedDeviceId(null)}
-        />
-      )}
 
       {error !== null && (
         <div className="absolute bottom-4 left-4 z-10 max-w-md rounded-lg border border-rose-500/50 bg-rose-950/80 px-3 py-2 text-sm text-rose-200">
