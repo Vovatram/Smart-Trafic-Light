@@ -390,42 +390,68 @@ function advancePeds(
   }
 }
 
-/** Два полу-блока рядом — так объект можно покрасить в 1 или 2 цвета сразу. */
-function TwoTonePod({
+// сколько секций детекции рисуем максимум — раскраска идёт "поперёк" (по
+// длине кузова, а не вдоль борта), секций ровно столько, сколько сенсоров
+// реально видят агента (не заведено жёстко в 2 — детектирующих может быть и
+// больше, лишние сверх этого числа просто не получат своей полоски)
+const MAX_TONES = 6;
+
+/**
+ * Кузов из MAX_TONES одинаковых секций-"шайб", уложенных ПОПЕРЁК (вдоль
+ * депта — по ходу движения), а не вдоль борта. Реально видимых — ровно
+ * colors.length (см. applyTones): секция масштабируется по Z до своей доли
+ * длины и красится в свой цвет, лишние прячутся — так агент, которого видят
+ * сразу несколько сенсоров, расписан полосками поперёк кузова, а не только
+ * двумя половинками вдоль.
+ */
+function MultiTonePod({
   width,
   height,
   depth,
   y,
-  refA,
-  refB,
+  refs,
 }: {
   width: number;
   height: number;
   depth: number;
   y: number;
-  refA: (el: THREE.Mesh | null) => void;
-  refB: (el: THREE.Mesh | null) => void;
+  refs: (index: number, el: THREE.Mesh | null) => void;
 }) {
-  const half = width / 2;
   return (
     <>
-      <mesh ref={refA} position={[-width / 4, y, 0]} castShadow>
-        <boxGeometry args={[half, height, depth]} />
-        <meshStandardMaterial color={HIDDEN_COLOR} roughness={0.5} />
-      </mesh>
-      <mesh ref={refB} position={[width / 4, y, 0]} castShadow>
-        <boxGeometry args={[half, height, depth]} />
-        <meshStandardMaterial color={HIDDEN_COLOR} roughness={0.5} />
-      </mesh>
+      {Array.from({ length: MAX_TONES }).map((_, i) => (
+        <mesh key={i} ref={(el) => refs(i, el)} position={[0, y, 0]} castShadow>
+          <boxGeometry args={[width, height, depth]} />
+          <meshStandardMaterial color={HIDDEN_COLOR} roughness={0.5} />
+        </mesh>
+      ))}
     </>
   );
+}
+
+/** Раскладывает colors.length секций поперёк depth, остальные прячет. */
+function applyTones(tones: (THREE.Mesh | null)[], depth: number, colors: string[]) {
+  const n = Math.min(colors.length, tones.length);
+  for (let i = 0; i < tones.length; i += 1) {
+    const mesh = tones[i];
+    if (!mesh) continue;
+    if (i >= n) {
+      mesh.visible = false;
+      continue;
+    }
+    mesh.visible = true;
+    const slice = 1 / n;
+    mesh.scale.z = slice;
+    mesh.position.z = -depth / 2 + (i + 0.5) * (depth / n);
+    (mesh.material as THREE.MeshStandardMaterial).color.set(colors[i]);
+  }
 }
 
 function applyDetection(
   slot: Slot,
   group: THREE.Group | null,
-  halfA: THREE.Mesh | null,
-  halfB: THREE.Mesh | null,
+  tones: (THREE.Mesh | null)[],
+  depth: number,
   sensors: ReturnType<typeof sensorDevices>,
   allDevices: Crossing["its_devices"],
   axis: "x" | "z",
@@ -444,11 +470,7 @@ function applyDetection(
   group.position.set(slot.x, 0, slot.z);
   group.rotation.y =
     axis === "z" ? (slot.dir > 0 ? 0 : Math.PI) : slot.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-
-  const colorA = colors[0];
-  const colorB = colors.length > 1 ? colors[1] : colors[0];
-  if (halfA) (halfA.material as THREE.MeshStandardMaterial).color.set(colorA);
-  if (halfB) (halfB.material as THREE.MeshStandardMaterial).color.set(colorB);
+  applyTones(tones, depth, colors);
 }
 
 /**
@@ -458,8 +480,8 @@ function applyDetection(
 function applyReplaySlot(
   entry: SceneSnapshot["cars"][number],
   group: THREE.Group | null,
-  halfA: THREE.Mesh | null,
-  halfB: THREE.Mesh | null,
+  tones: (THREE.Mesh | null)[],
+  depth: number,
   axis: "x" | "z",
   color: string,
 ) {
@@ -472,15 +494,15 @@ function applyReplaySlot(
   group.visible = true;
   group.position.set(x, 0, z);
   group.rotation.y = axis === "z" ? (dir > 0 ? 0 : Math.PI) : dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-  if (halfA) (halfA.material as THREE.MeshStandardMaterial).color.set(color);
-  if (halfB) (halfB.material as THREE.MeshStandardMaterial).color.set(color);
+  applyTones(tones, depth, [color]);
 }
 
 /**
  * Процедурная генерация машин и пешеходов: спавн по интенсивности (в час) с
  * каждого из 4 "начал", движение только на зелёный/"идите", отрисовка —
- * только пока агент виден хотя бы одному датчику (камере/микроволновому),
- * цветом этого датчика (двумя цветами, если видят двое).
+ * только пока агент виден хотя бы одному датчику (камере/микроволновому);
+ * если видят несколько — кузов расписан полосками поперёк, по цвету на
+ * каждый датчик (см. MultiTonePod, до MAX_TONES штук).
  */
 export function TrafficSimulation({
   crossing,
@@ -537,21 +559,21 @@ export function TrafficSimulation({
   const snapshotElapsed = useRef(0);
   const sceneSnapshotElapsed = useRef(0);
 
+  // tones[i] — массив из MAX_TONES ссылок на секции агента i; заполняется
+  // callback'ом refs(index, el) у MultiTonePod
+  const makeTones = (n: number): (THREE.Mesh | null)[][] =>
+    Array.from({ length: n }, () => Array<THREE.Mesh | null>(MAX_TONES).fill(null));
+
   const carGroups = useRef<(THREE.Group | null)[]>([]);
-  const carHalvesA = useRef<(THREE.Mesh | null)[]>([]);
-  const carHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const carTones = useRef<(THREE.Mesh | null)[][]>(makeTones(CAR_POOL));
   const pedGroups = useRef<(THREE.Group | null)[]>([]);
-  const pedHalvesA = useRef<(THREE.Mesh | null)[]>([]);
-  const pedHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const pedTones = useRef<(THREE.Mesh | null)[][]>(makeTones(PED_POOL));
   const tramGroups = useRef<(THREE.Group | null)[]>([]);
-  const tramHalvesA = useRef<(THREE.Mesh | null)[]>([]);
-  const tramHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const tramTones = useRef<(THREE.Mesh | null)[][]>(makeTones(TRAM_POOL));
   const busGroups = useRef<(THREE.Group | null)[]>([]);
-  const busHalvesA = useRef<(THREE.Mesh | null)[]>([]);
-  const busHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const busTones = useRef<(THREE.Mesh | null)[][]>(makeTones(BUS_POOL));
   const specialGroups = useRef<(THREE.Group | null)[]>([]);
-  const specialHalvesA = useRef<(THREE.Mesh | null)[]>([]);
-  const specialHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const specialTones = useRef<(THREE.Mesh | null)[][]>(makeTones(SPECIAL_POOL));
   const specialBeacons = useRef<(THREE.Mesh | null)[]>([]);
 
   useFrame((state, rawDelta) => {
@@ -690,8 +712,8 @@ export function TrafficSimulation({
         applyReplaySlot(
           replay.cars[i] ?? null,
           carGroups.current[i],
-          carHalvesA.current[i],
-          carHalvesB.current[i],
+          carTones.current[i],
+          CAR_LENGTH,
           "z",
           REPLAY_VEHICLE_COLOR,
         ),
@@ -700,8 +722,8 @@ export function TrafficSimulation({
         applyReplaySlot(
           replay.peds[i] ?? null,
           pedGroups.current[i],
-          pedHalvesA.current[i],
-          pedHalvesB.current[i],
+          pedTones.current[i],
+          PED_DEPTH,
           "x",
           REPLAY_PED_COLOR,
         ),
@@ -711,39 +733,23 @@ export function TrafficSimulation({
       for (const g of specialGroups.current) if (g) g.visible = false;
     } else {
       cars.current.forEach((slot, i) =>
-        applyDetection(
-          slot,
-          carGroups.current[i],
-          carHalvesA.current[i],
-          carHalvesB.current[i],
-          sensors,
-          crossing.its_devices,
-          "z",
-        ),
+        applyDetection(slot, carGroups.current[i], carTones.current[i], CAR_LENGTH, sensors, crossing.its_devices, "z"),
       );
       peds.current.forEach((slot, i) =>
-        applyDetection(
-          slot,
-          pedGroups.current[i],
-          pedHalvesA.current[i],
-          pedHalvesB.current[i],
-          sensors,
-          crossing.its_devices,
-          "x",
-        ),
+        applyDetection(slot, pedGroups.current[i], pedTones.current[i], PED_DEPTH, sensors, crossing.its_devices, "x"),
       );
       trams.current.forEach((slot, i) =>
-        applyDetection(slot, tramGroups.current[i], tramHalvesA.current[i], tramHalvesB.current[i], sensors, crossing.its_devices, "z"),
+        applyDetection(slot, tramGroups.current[i], tramTones.current[i], TRAM_LENGTH, sensors, crossing.its_devices, "z"),
       );
       buses.current.forEach((slot, i) =>
-        applyDetection(slot, busGroups.current[i], busHalvesA.current[i], busHalvesB.current[i], sensors, crossing.its_devices, "z"),
+        applyDetection(slot, busGroups.current[i], busTones.current[i], BUS_LENGTH, sensors, crossing.its_devices, "z"),
       );
       specials.current.forEach((slot, i) =>
         applyDetection(
           slot,
           specialGroups.current[i],
-          specialHalvesA.current[i],
-          specialHalvesB.current[i],
+          specialTones.current[i],
+          SPECIAL_LENGTH,
           sensors,
           crossing.its_devices,
           "z",
@@ -810,61 +816,56 @@ export function TrafficSimulation({
     <group>
       {Array.from({ length: CAR_POOL }).map((_, i) => (
         <group key={`car-${i}`} ref={(el) => (carGroups.current[i] = el)} visible={false}>
-          <TwoTonePod
+          <MultiTonePod
             width={CAR_WIDTH}
             height={1.0}
             depth={CAR_LENGTH}
             y={0.58}
-            refA={(el) => (carHalvesA.current[i] = el)}
-            refB={(el) => (carHalvesB.current[i] = el)}
+            refs={(toneIndex, el) => (carTones.current[i][toneIndex] = el)}
           />
         </group>
       ))}
       {Array.from({ length: PED_POOL }).map((_, i) => (
         <group key={`ped-${i}`} ref={(el) => (pedGroups.current[i] = el)} visible={false}>
-          <TwoTonePod
+          <MultiTonePod
             width={PED_WIDTH}
             height={1.6}
             depth={PED_DEPTH}
             y={0.8}
-            refA={(el) => (pedHalvesA.current[i] = el)}
-            refB={(el) => (pedHalvesB.current[i] = el)}
+            refs={(toneIndex, el) => (pedTones.current[i][toneIndex] = el)}
           />
         </group>
       ))}
       {Array.from({ length: TRAM_POOL }).map((_, i) => (
         <group key={`tram-${i}`} ref={(el) => (tramGroups.current[i] = el)} visible={false}>
-          <TwoTonePod
+          <MultiTonePod
             width={TRAM_WIDTH}
             height={2.4}
             depth={TRAM_LENGTH}
             y={1.2}
-            refA={(el) => (tramHalvesA.current[i] = el)}
-            refB={(el) => (tramHalvesB.current[i] = el)}
+            refs={(toneIndex, el) => (tramTones.current[i][toneIndex] = el)}
           />
         </group>
       ))}
       {Array.from({ length: BUS_POOL }).map((_, i) => (
         <group key={`bus-${i}`} ref={(el) => (busGroups.current[i] = el)} visible={false}>
-          <TwoTonePod
+          <MultiTonePod
             width={BUS_WIDTH}
             height={2.2}
             depth={BUS_LENGTH}
             y={1.1}
-            refA={(el) => (busHalvesA.current[i] = el)}
-            refB={(el) => (busHalvesB.current[i] = el)}
+            refs={(toneIndex, el) => (busTones.current[i][toneIndex] = el)}
           />
         </group>
       ))}
       {Array.from({ length: SPECIAL_POOL }).map((_, i) => (
         <group key={`special-${i}`} ref={(el) => (specialGroups.current[i] = el)} visible={false}>
-          <TwoTonePod
+          <MultiTonePod
             width={SPECIAL_WIDTH}
             height={1.4}
             depth={SPECIAL_LENGTH}
             y={0.7}
-            refA={(el) => (specialHalvesA.current[i] = el)}
-            refB={(el) => (specialHalvesB.current[i] = el)}
+            refs={(toneIndex, el) => (specialTones.current[i][toneIndex] = el)}
           />
           {/* маячок — цвет мигает в useFrame, независимо от раскраски детекции */}
           <mesh ref={(el) => (specialBeacons.current[i] = el)} position={[0, 1.55, 0]}>
