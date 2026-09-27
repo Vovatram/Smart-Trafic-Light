@@ -7,7 +7,7 @@ import type { RefObject } from "react";
 
 import { api } from "../api/client";
 import type { Crossing, PedestrianSignal, SceneSlot, SceneSnapshot, VehicleSignal } from "../types";
-import { detectingColors, isWithinFov, sensorDevices } from "./detection";
+import { detectingColors, i2vDevices, isWithinFov, sensorDevices } from "./detection";
 import {
   busLaneIndex,
   carLaneIndices,
@@ -650,9 +650,15 @@ export function TrafficSimulation({
         : allSensors,
     [allSensors, selectedSensorIds],
   );
+  const allI2V = useMemo(() => i2vDevices(crossing.its_devices), [crossing.its_devices]);
+  // тот же принцип, что у sensors выше: выбрали конкретный(е) сенсор(ы) в
+  // панели ИТС-объектов — видно только то, что детектирует именно он(и)
   const i2vSensors = useMemo(
-    () => crossing.its_devices.filter((d) => d.enabled && d.device_type === "i2v"),
-    [crossing.its_devices],
+    () =>
+      selectedSensorIds && selectedSensorIds.size > 0
+        ? allI2V.filter((d) => selectedSensorIds.has(d.id))
+        : allI2V,
+    [allI2V, selectedSensorIds],
   );
   const stopZ = geo.crossingHalf + geo.stopOffset;
   const vehiclePoles = useMemo(() => poles(geo), [geo]);

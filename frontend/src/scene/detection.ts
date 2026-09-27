@@ -3,11 +3,28 @@ import { colorForDevice } from "./deviceColors";
 
 const DEG2RAD = Math.PI / 180;
 
-/** Только камера/датчик имеют зону обзора (fov + радиус) — петля не в счёт; выключенные не детектируют. */
+/**
+ * Обычные направленные сенсоры (камера/микроволновый) — петля не в счёт (нет
+ * конуса обзора), i2v тоже не в счёт: он не должен детектировать машин/
+ * пешеходов вообще, только трамвай/автобус/спецтехнику через отдельный
+ * список (см. i2vDevices) — иначе, будучи всенаправленным (fov=360) и
+ * дальнобойным (300м), он бы "видел" почти все машины на сцене как обычный
+ * широкоугольный сенсор. Выключенные устройства не детектируют.
+ */
 export function sensorDevices(devices: ItsDevice[]): ItsDevice[] {
   return devices.filter(
-    (d) => d.enabled && d.device_type !== "loop" && d.fov_deg != null && d.view_radius != null,
+    (d) =>
+      d.enabled &&
+      d.device_type !== "loop" &&
+      d.device_type !== "i2v" &&
+      d.fov_deg != null &&
+      d.view_radius != null,
   );
+}
+
+/** i2v-устройства — видят только трамвай/автобус/спецтехнику, см. TrafficSimulation. */
+export function i2vDevices(devices: ItsDevice[]): ItsDevice[] {
+  return devices.filter((d) => d.enabled && d.device_type === "i2v");
 }
 
 /** true, если точка (px,pz) лежит в секторе обзора устройства d. */
