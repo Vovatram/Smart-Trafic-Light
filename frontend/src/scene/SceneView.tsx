@@ -85,7 +85,6 @@ export function SceneView({
   onClickVehicleLight,
   onClickPedestrianLight,
   onPedestrianWaiting,
-  showTrafficCounts,
   replay,
 }: {
   crossing: Crossing | null;
@@ -107,8 +106,6 @@ export function SceneView({
   onClickVehicleLight?: () => void;
   onClickPedestrianLight?: () => void;
   onPedestrianWaiting?: () => void;
-  /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
-  showTrafficCounts?: boolean;
   /** не пусто — сцена в режиме исторического воспроизведения (таймлайн панели "История") */
   replay?: ReplayFrame | null;
 }) {
@@ -220,7 +217,6 @@ export function SceneView({
             vehicleSignal={vehicleSignal}
             pedestrianSignal={pedestrianSignal}
             onPedestrianWaiting={onPedestrianWaiting}
-            showCounts={!generationMode && showTrafficCounts}
             selectedSensorIds={selectedDeviceIds}
             replay={replay}
             pedCountRef={pedCounts}

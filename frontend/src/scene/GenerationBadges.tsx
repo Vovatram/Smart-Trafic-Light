@@ -4,6 +4,11 @@ import type { Crossing, CrossingPatch } from "../types";
 import { roadGeometry, sidewalkX, type RoadGeometry } from "./layout";
 import type { ManualSpawnRef, SpawnKind } from "./TrafficSimulation";
 
+// панельки "Машины/Спецтехника/Трамвай/Автобус" стоят на фиксированном
+// расстоянии от перехода, а не у самого конца дороги — так они не съезжают
+// куда-то далеко на длинной дороге и не путаются с разметкой самого конца
+const GENERATION_BADGE_DISTANCE = 100;
+
 interface Entry {
   spawnKind: SpawnKind;
   label: string;
@@ -127,8 +132,8 @@ export function GenerationBadges({
 
   const forward = forwardCluster(geo);
   const backward = backwardCluster(geo);
-  const forwardPos = rowPositions(geo.leftEdge / 2, -geo.roadLength, forward.length, spacing);
-  const backwardPos = rowPositions(geo.rightEdge / 2, geo.roadLength, backward.length, spacing);
+  const forwardPos = rowPositions(geo.leftEdge / 2, -GENERATION_BADGE_DISTANCE, forward.length, spacing);
+  const backwardPos = rowPositions(geo.rightEdge / 2, GENERATION_BADGE_DISTANCE, backward.length, spacing);
 
   const pedLeft: Entry = { spawnKind: "pedLeft", label: "Пешеходы →", field: "peds_left_vph", unit: "чел/ч" };
   const pedRight: Entry = { spawnKind: "pedRight", label: "Пешеходы ←", field: "peds_right_vph", unit: "чел/ч" };

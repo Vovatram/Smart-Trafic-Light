@@ -274,7 +274,6 @@ export default function App() {
         onClickVehicleLight={onClickVehicleLight}
         onClickPedestrianLight={onClickPedestrianLight}
         onPedestrianWaiting={requestCall}
-        showTrafficCounts={signalPanelOpen}
         replay={historyPlayback.replay}
       />
 

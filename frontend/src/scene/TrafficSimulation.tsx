@@ -1,4 +1,3 @@
-import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -16,14 +15,13 @@ import {
   laneCenterX,
   poles,
   roadGeometry,
-  sidewalkX,
+  STOP_MARKER_LENGTH,
   stopMarkerPosition,
   tramLaneIndex,
   type RoadGeometry,
 } from "./layout";
 import type { ReplayFrame } from "./replay";
 
-const COUNT_BADGE_Y = 2.2;
 const SNAPSHOT_INTERVAL_S = 30; // как часто писать снимок интенсивности для графиков
 const SCENE_SNAPSHOT_INTERVAL_S = 2; // как часто писать снимок ПОЗИЦИЙ для покадрового replay
 // цвет агентов при историческом воспроизведении — детекция сенсоров в
@@ -65,28 +63,6 @@ export type SpawnKind =
 
 /** Множество "запросов на немедленный спавн" — кладёт GenerationBadges, разбирает и чистит TrafficSimulation за один кадр. */
 export type ManualSpawnRef = RefObject<Set<SpawnKind>>;
-
-/** Текстовый бейдж, который сам меняет содержимое через ref — без React state. */
-function CountBadge({
-  x,
-  z,
-  refCb,
-}: {
-  x: number;
-  z: number;
-  refCb: (el: HTMLDivElement | null) => void;
-}) {
-  return (
-    <Html position={[x, COUNT_BADGE_Y, z]} center>
-      <div
-        ref={refCb}
-        className="rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-100 shadow-lg"
-      >
-        0
-      </div>
-    </Html>
-  );
-}
 
 const CAR_SPEED = 8; // м/с
 const PED_SPEED = 2.6; // м/с — заметно быстрый шаг для наглядности сцены
@@ -374,6 +350,32 @@ function advanceVehicles(
   );
 }
 
+/** Есть ли в пуле активный трамвай/автобус этого направления, который сейчас стоит на остановке. */
+function isDwellingInDir(pool: Slot[], dir: 1 | -1): boolean {
+  return pool.some((s) => s.active && s.dir === dir && s.dwellUntil > 0);
+}
+
+/**
+ * Пока трамвай/автобус стоит на своей остановке, машины/спецтехника ТОГО ЖЕ
+ * направления не заезжают на неё — остановка считается на всю ширину
+ * направления (все полосы), а не только на выделенную полосу трамвая/
+ * автобуса, поэтому блок применяется к пулу независимо от полосы (x не
+ * проверяется). Как только транспорт отправляется (dwellUntil доходит до
+ * 0), блок сам снимается на следующем кадре — здесь ничего запоминать не
+ * нужно, isDwellingInDir каждый раз считается по актуальному состоянию.
+ */
+function blockAtDwellingStop(pool: Slot[], dir: 1 | -1, stopCenterZ: number | null, active: boolean) {
+  if (!active || stopCenterZ === null) return;
+  const half = STOP_MARKER_LENGTH / 2;
+  const edge = dir > 0 ? stopCenterZ - half : stopCenterZ + half;
+  for (const s of pool) {
+    if (!s.active || s.dir !== dir) continue;
+    const crossed = dir > 0 ? s.z > edge : s.z < edge;
+    if (crossed) continue;
+    s.z = dir > 0 ? Math.min(s.z, edge) : Math.max(s.z, edge);
+  }
+}
+
 /**
  * Пешеходы так же продолжают выходить на тротуар и на красный — но
  * останавливаются на границе проезжей части. Кто уже ступил на переход,
@@ -616,7 +618,6 @@ export function TrafficSimulation({
   vehicleSignal,
   pedestrianSignal,
   onPedestrianWaiting,
-  showCounts,
   selectedSensorIds,
   replay,
   pedCountRef,
@@ -629,8 +630,6 @@ export function TrafficSimulation({
   pedestrianSignal: PedestrianSignal;
   /** пешеход подошёл к переходу и ждёт — в режиме "Кнопка" это авто-нажатие вызова */
   onPedestrianWaiting?: () => void;
-  /** живые счётчики машин/пешеходов по направлениям — видны, пока открыта панель "Режим светофора" */
-  showCounts?: boolean;
   /** если не пусто — показываются только машины/пешеходы, видимые ЭТИМ(и) датчиком(ами) */
   selectedSensorIds?: ReadonlySet<number>;
   /** не пусто — сцена показывает записанный исторический кадр вместо живой симуляции
@@ -664,7 +663,6 @@ export function TrafficSimulation({
         : allI2V,
     [allI2V, selectedSensorIds],
   );
-  const stopZ = geo.crossingHalf + geo.stopOffset;
   const vehiclePoles = useMemo(() => poles(geo), [geo]);
 
   const cars = useRef<Slot[]>(makePool(CAR_POOL));
@@ -672,12 +670,6 @@ export function TrafficSimulation({
   const trams = useRef<Slot[]>(makePool(TRAM_POOL));
   const buses = useRef<Slot[]>(makePool(BUS_POOL));
   const specials = useRef<Slot[]>(makePool(SPECIAL_POOL));
-  const countRefs = useRef<{
-    forward: HTMLDivElement | null;
-    backward: HTMLDivElement | null;
-    pedLeft: HTMLDivElement | null;
-    pedRight: HTMLDivElement | null;
-  }>({ forward: null, backward: null, pedLeft: null, pedRight: null });
   const snapshotElapsed = useRef(0);
   const sceneSnapshotElapsed = useRef(0);
 
@@ -829,6 +821,23 @@ export function TrafficSimulation({
       geo,
       busDwell,
     );
+
+    // пока трамвай/автобус стоит на своей остановке, машины/спецтехника ЭТОГО
+    // ЖЕ направления не заезжают на неё — считается на всю ширину направления
+    // (все полосы), не только на выделенную полосу трамвая/автобуса
+    const tramDwellingFwd = isDwellingInDir(trams.current, 1);
+    const tramDwellingBack = isDwellingInDir(trams.current, -1);
+    const busDwellingFwd = isDwellingInDir(buses.current, 1);
+    const busDwellingBack = isDwellingInDir(buses.current, -1);
+    blockAtDwellingStop(cars.current, 1, tramDwell.forwardStop, tramDwellingFwd);
+    blockAtDwellingStop(cars.current, -1, tramDwell.backwardStop, tramDwellingBack);
+    blockAtDwellingStop(cars.current, 1, busDwell.forwardStop, busDwellingFwd);
+    blockAtDwellingStop(cars.current, -1, busDwell.backwardStop, busDwellingBack);
+    blockAtDwellingStop(specials.current, 1, tramDwell.forwardStop, tramDwellingFwd);
+    blockAtDwellingStop(specials.current, -1, tramDwell.backwardStop, tramDwellingBack);
+    blockAtDwellingStop(specials.current, 1, busDwell.forwardStop, busDwellingFwd);
+    blockAtDwellingStop(specials.current, -1, busDwell.backwardStop, busDwellingBack);
+
     advancePeds(peds.current, pedestrianSignal === "walk", dt, geo, onPedestrianWaiting);
 
     // историческое воспроизведение подменяет ТОЛЬКО отрисовку — сама
@@ -922,15 +931,8 @@ export function TrafficSimulation({
     for (const s of cars.current) if (s.active) (s.dir > 0 ? forward++ : backward++);
     for (const s of peds.current) if (s.active) (s.dir > 0 ? pedLeft++ : pedRight++);
 
-    if (showCounts) {
-      // textContent напрямую, без React state — четыре бейджа не стоят лишнего ре-рендера
-      if (countRefs.current.forward) countRefs.current.forward.textContent = String(forward);
-      if (countRefs.current.backward) countRefs.current.backward.textContent = String(backward);
-      if (countRefs.current.pedLeft) countRefs.current.pedLeft.textContent = String(pedLeft);
-      if (countRefs.current.pedRight) countRefs.current.pedRight.textContent = String(pedRight);
-    }
-    // отдельно от showCounts — эту пару читает бейдж "Пешеходный" на самом
-    // светофоре (третья строка под секундами), у него своя логика видимости
+    // эту пару читает бейдж "Пешеходный" на самом светофоре (третья строка
+    // под секундами), у него своя логика видимости
     if (pedCountRef?.current) {
       if (pedCountRef.current.pedLeft) pedCountRef.current.pedLeft.textContent = `${pedLeft} чел`;
       if (pedCountRef.current.pedRight) pedCountRef.current.pedRight.textContent = `${pedRight} чел`;
@@ -1057,34 +1059,6 @@ export function TrafficSimulation({
           </mesh>
         </group>
       ))}
-      {showCounts && (
-        <>
-          {geo.lanesForward > 0 && (
-            <CountBadge
-              x={geo.leftEdge / 2}
-              z={-stopZ / 2}
-              refCb={(el) => (countRefs.current.forward = el)}
-            />
-          )}
-          {geo.lanesBackward > 0 && (
-            <CountBadge
-              x={geo.rightEdge / 2}
-              z={stopZ / 2}
-              refCb={(el) => (countRefs.current.backward = el)}
-            />
-          )}
-          <CountBadge
-            x={sidewalkX(geo, "left")}
-            z={0}
-            refCb={(el) => (countRefs.current.pedLeft = el)}
-          />
-          <CountBadge
-            x={sidewalkX(geo, "right")}
-            z={0}
-            refCb={(el) => (countRefs.current.pedRight = el)}
-          />
-        </>
-      )}
     </group>
   );
 }

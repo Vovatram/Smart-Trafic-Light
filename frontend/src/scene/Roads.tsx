@@ -143,17 +143,21 @@ function useMarkings(crossing: Crossing): Box[] {
 }
 
 const TRAM_GAUGE = 0.9; // расстояние между "рельсами" — чисто визуальное, не настоящая колея
-const ZIGZAG_AMPLITUDE = 0.7; // насколько зигзаг уходит вбок от центра полосы
 const ZIGZAG_TEETH = 6; // сколько "зубцов" укладывается в STOP_MARKER_LENGTH
 const ZIGZAG_THICKNESS = 0.14;
 
-/** Разметка остановки — не сплошной блок, а жёлтая ломаная линия вдоль полосы (как в жизни). */
-function zigzagLine(centerX: number, centerZ: number, length: number): Box[] {
+/**
+ * Разметка остановки — не сплошной блок, а жёлтая ломаная линия; amplitude
+ * теперь во всю ширину направления (все полосы), а не только полосы
+ * трамвая/автобуса — машины того же направления на неё не заезжают целиком
+ * (см. blockAtDwellingStop в TrafficSimulation), разметка это отражает.
+ */
+function zigzagLine(centerX: number, centerZ: number, length: number, amplitude: number): Box[] {
   const half = length / 2;
   const step = length / ZIGZAG_TEETH;
   const points: { x: number; z: number }[] = [];
   for (let i = 0; i <= ZIGZAG_TEETH; i += 1) {
-    points.push({ x: centerX + (i % 2 === 0 ? -ZIGZAG_AMPLITUDE : ZIGZAG_AMPLITUDE), z: centerZ - half + i * step });
+    points.push({ x: centerX + (i % 2 === 0 ? -amplitude : amplitude), z: centerZ - half + i * step });
   }
   const segments: Box[] = [];
   for (let i = 0; i < points.length - 1; i += 1) {
@@ -210,7 +214,12 @@ function useTransitOverlays(crossing: Crossing) {
     const stops: Box[] = [];
     const pushStop = (dir: "forward" | "backward", lane: number, position: Crossing["tram_stop_forward"]) => {
       const p = stopMarkerPosition(geo, dir, lane, position);
-      if (p) stops.push(...zigzagLine(p.x, p.z, STOP_MARKER_LENGTH));
+      if (!p) return;
+      // на всю ширину направления (все полосы), а не только полосу трамвая/автобуса
+      const edge = dir === "forward" ? geo.leftEdge : geo.rightEdge;
+      const centerX = edge / 2;
+      const amplitude = Math.max(0.3, Math.abs(edge) / 2 - 0.3);
+      stops.push(...zigzagLine(centerX, p.z, STOP_MARKER_LENGTH, amplitude));
     };
     if (geo.hasTramForward) pushStop("forward", tramLaneIndex(), geo.tramStopForward);
     if (geo.hasTramBackward) pushStop("backward", tramLaneIndex(), geo.tramStopBackward);
