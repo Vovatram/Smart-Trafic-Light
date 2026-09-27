@@ -9,8 +9,9 @@ const DEVICE_LABEL: Record<DeviceType, string> = {
   camera: "Камера",
   microwave: "Микроволновый датчик",
   loop: "Индукционная петля",
+  i2v: "I2V-блок связи",
 };
-const DEVICE_ORDER: DeviceType[] = ["camera", "microwave", "loop"];
+const DEVICE_ORDER: DeviceType[] = ["camera", "microwave", "loop", "i2v"];
 
 /**
  * Трамвай/автобус ЗАМЕНЯЮТ существующую полосу направления (трамвай —

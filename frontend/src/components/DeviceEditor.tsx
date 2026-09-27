@@ -5,6 +5,7 @@ const DEVICE_LABEL: Record<DeviceType, string> = {
   camera: "Камера",
   microwave: "Микроволновый датчик",
   loop: "Индукционная петля",
+  i2v: "I2V-блок связи",
 };
 
 export function DeviceEditor({
@@ -75,29 +76,33 @@ export function DeviceEditor({
               disabled={busy}
               onChange={(height) => onChange({ height })}
             />
+            {device.device_type !== "i2v" && (
+              <>
+                <Stepper
+                  label="Поворот"
+                  value={device.rotation_deg ?? 0}
+                  unit="°"
+                  min={0}
+                  max={360}
+                  step={15}
+                  wrap
+                  disabled={busy}
+                  onChange={(rotation_deg) => onChange({ rotation_deg })}
+                />
+                <Stepper
+                  label="Угол обзора"
+                  value={device.fov_deg ?? 60}
+                  unit="°"
+                  min={0.1}
+                  max={100000}
+                  step={5}
+                  disabled={busy}
+                  onChange={(fov_deg) => onChange({ fov_deg })}
+                />
+              </>
+            )}
             <Stepper
-              label="Поворот"
-              value={device.rotation_deg ?? 0}
-              unit="°"
-              min={0}
-              max={360}
-              step={15}
-              wrap
-              disabled={busy}
-              onChange={(rotation_deg) => onChange({ rotation_deg })}
-            />
-            <Stepper
-              label="Угол обзора"
-              value={device.fov_deg ?? 60}
-              unit="°"
-              min={0.1}
-              max={100000}
-              step={5}
-              disabled={busy}
-              onChange={(fov_deg) => onChange({ fov_deg })}
-            />
-            <Stepper
-              label="Радиус обзора"
+              label={device.device_type === "i2v" ? "Радиус действия" : "Радиус обзора"}
               value={device.view_radius ?? 35}
               unit=" м"
               min={0.1}

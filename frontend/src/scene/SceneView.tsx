@@ -14,7 +14,7 @@ import type { ReplayFrame } from "./replay";
 import { Roads } from "./Roads";
 import { SignalMasts } from "./SignalMasts";
 import { SignalStatusBadge } from "./SignalStatusBadge";
-import { TrafficSimulation, type PedCountRefs, type SpawnKind } from "./TrafficSimulation";
+import { TrafficSimulation, type PedCountRefs, type SpawnKind, type VehicleCountRefs } from "./TrafficSimulation";
 
 export type ViewName = "perspective" | "top" | "along" | "side";
 
@@ -114,6 +114,7 @@ export function SceneView({
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const pedCounts = useRef<PedCountRefs>({ pedLeft: null, pedRight: null });
+  const vehicleCounts = useRef<VehicleCountRefs>({ left: null, right: null });
   const manualSpawn = useRef<Set<SpawnKind>>(new Set());
   const roadLength = crossing?.road_length ?? 40;
   // useMemo — принципиально: без него target ниже была бы новым массивом на
@@ -204,6 +205,7 @@ export function SceneView({
               vehicleSignal={vehicleSignal}
               pedestrianSignal={pedestrianSignal}
               pedCountRef={pedCounts}
+              vehicleCountRef={vehicleCounts}
             />
           )}
           <ItsDevices
@@ -222,6 +224,7 @@ export function SceneView({
             selectedSensorIds={selectedDeviceIds}
             replay={replay}
             pedCountRef={pedCounts}
+            vehicleCountRef={vehicleCounts}
             manualSpawnRef={manualSpawn}
           />
           {generationMode && onChangeCrossing && (

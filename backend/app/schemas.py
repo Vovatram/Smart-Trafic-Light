@@ -10,6 +10,8 @@ POLE_DEFAULTS: dict[DeviceType, tuple[float, float]] = {
     # device_type -> (fov_deg, view_radius)
     DeviceType.CAMERA: (60.0, 35.0),
     DeviceType.MICROWAVE: (25.0, 18.0),
+    # i2v — не направленный сенсор, а блок связи: fov=360 (весь круг), радиус — дальность связи
+    DeviceType.I2V: (360.0, 300.0),
 }
 
 

@@ -27,6 +27,7 @@ class DeviceType(str, enum.Enum):
     CAMERA = "camera"
     MICROWAVE = "microwave"
     LOOP = "loop"
+    I2V = "i2v"  # придорожный блок связи: видит только трамвай/автобус, в радиусе, без угла обзора
 
 
 class SignalMode(str, enum.Enum):

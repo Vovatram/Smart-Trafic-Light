@@ -10,7 +10,7 @@ import {
   VEHICLE_COLOR,
   VEHICLE_HEAD_Y,
 } from "./SignalMasts";
-import type { PedCountRefs } from "./TrafficSimulation";
+import type { PedCountRefs, VehicleCountRefs } from "./TrafficSimulation";
 
 // ниже, чем раньше (было +1.1) — на этой высоте бейдж надёжнее попадает в
 // кадр во всех пресетах камеры; всё равно выше самой автомобильной головы (4.3)
@@ -26,6 +26,7 @@ function Badge({
   value,
   color,
   countRef,
+  sideRefs,
 }: {
   x: number;
   y: number;
@@ -35,6 +36,8 @@ function Badge({
   color: string;
   /** третья строка под секундами — сколько пешеходов сейчас на этой стороне; пишется через ref, не React state */
   countRef?: (el: HTMLDivElement | null) => void;
+  /** два числа рядом (лево/право на экране) — счётчики машин по направлениям, см. VehicleCountRefs */
+  sideRefs?: { left: (el: HTMLDivElement | null) => void; right: (el: HTMLDivElement | null) => void };
 }) {
   return (
     <Html position={[x, y, z]} center zIndexRange={[100, 0]}>
@@ -47,6 +50,12 @@ function Badge({
           {value}
         </div>
         {countRef && <div ref={countRef} className="text-[10px] tabular-nums text-slate-400" />}
+        {sideRefs && (
+          <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] tabular-nums text-slate-400">
+            <span ref={sideRefs.left} />
+            <span ref={sideRefs.right} />
+          </div>
+        )}
       </div>
     </Html>
   );
@@ -67,6 +76,7 @@ export function SignalStatusBadge({
   vehicleSignal,
   pedestrianSignal,
   pedCountRef,
+  vehicleCountRef,
 }: {
   crossing: Crossing;
   vehicleLabel: string;
@@ -75,6 +85,8 @@ export function SignalStatusBadge({
   pedestrianSignal: PedestrianSignal;
   /** живые счётчики пешеходов слева/справа (пишет TrafficSimulation) — третья строка на пешеходном бейдже */
   pedCountRef?: RefObject<PedCountRefs>;
+  /** живые счётчики машин лево/право НА ЭКРАНЕ (пишет TrafficSimulation по текущей камере) */
+  vehicleCountRef?: RefObject<VehicleCountRefs>;
 }) {
   const geo = useMemo(() => roadGeometry(crossing), [crossing]);
   const items = useMemo(() => poles(geo), [geo]);
@@ -91,6 +103,14 @@ export function SignalStatusBadge({
           title="Автомобильный"
           value={vehicleLabel}
           color={VEHICLE_COLOR[vehicleSignal]}
+          sideRefs={{
+            left: (el) => {
+              if (vehicleCountRef?.current) vehicleCountRef.current.left = el;
+            },
+            right: (el) => {
+              if (vehicleCountRef?.current) vehicleCountRef.current.right = el;
+            },
+          }}
         />
       )}
       {pedestrianLabel &&

@@ -89,6 +89,37 @@ function MicrowaveHead({
   );
 }
 
+/** Придорожный блок I2V — антенна на мачте; сектор обзора рисуется как полный круг (fov_deg=360). */
+function I2VHead({
+  device,
+  color,
+  showWedge,
+}: {
+  device: ItsDevice;
+  color: string;
+  showWedge: boolean;
+}) {
+  return (
+    <group>
+      <mesh castShadow>
+        <boxGeometry args={[0.22, 0.16, 0.22]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.5} metalness={0.4} />
+      </mesh>
+      <mesh position={[0, 0.22, 0]} castShadow>
+        <cylinderGeometry args={[0.015, 0.015, 0.3, 8]} />
+        <meshStandardMaterial color="#94a3b8" roughness={0.4} metalness={0.6} />
+      </mesh>
+      <mesh position={[0, 0.38, 0]}>
+        <sphereGeometry args={[0.035, 8, 8]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.8} />
+      </mesh>
+      {showWedge && (
+        <FovWedge halfAngleDeg={(device.fov_deg ?? 360) / 2} length={device.view_radius ?? 300} color={color} />
+      )}
+    </group>
+  );
+}
+
 function PoleDevice({
   device,
   color,
@@ -122,6 +153,8 @@ function PoleDevice({
       <group position={[0, height, 0]}>
         {device.device_type === "camera" ? (
           <CameraHead device={device} color={color} showWedge={showWedge} />
+        ) : device.device_type === "i2v" ? (
+          <I2VHead device={device} color={color} showWedge={showWedge} />
         ) : (
           <MicrowaveHead device={device} color={color} showWedge={showWedge} />
         )}
@@ -222,6 +255,7 @@ const GHOST_DEFAULTS: Record<DeviceType, { height?: number; loopLength?: number 
   camera: { height: 5 },
   microwave: { height: 5 },
   loop: { loopLength: 2 },
+  i2v: { height: 1.5 },
 };
 
 /** Полупрозрачный предпросмотр — куда встанет объект, если кликнуть сейчас. */
@@ -246,7 +280,7 @@ export function PlacementGhost({ type, x, z }: { type: DeviceType; x: number; z:
       <mesh position={[0, height, 0]}>
         <boxGeometry args={[0.28, 0.28, type === "camera" ? 0.5 : 0.22]} />
         <meshStandardMaterial
-          color={type === "camera" ? "#e5e7eb" : "#4c1d95"}
+          color={type === "camera" ? "#e5e7eb" : type === "i2v" ? "#1e293b" : "#4c1d95"}
           transparent
           opacity={0.55}
           depthWrite={false}

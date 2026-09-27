@@ -7,13 +7,14 @@ import type { RefObject } from "react";
 
 import { api } from "../api/client";
 import type { Crossing, PedestrianSignal, SceneSlot, SceneSnapshot, VehicleSignal } from "../types";
-import { detectingColors, sensorDevices } from "./detection";
+import { detectingColors, isWithinFov, sensorDevices } from "./detection";
 import {
   busLaneIndex,
   carLaneIndices,
   isBusLane,
   isTramLane,
   laneCenterX,
+  poles,
   roadGeometry,
   sidewalkX,
   stopMarkerPosition,
@@ -35,6 +36,18 @@ const REPLAY_PED_COLOR = "#38bdf8";
 export interface PedCountRefs {
   pedLeft: HTMLDivElement | null;
   pedRight: HTMLDivElement | null;
+}
+
+/**
+ * Счётчики машин по направлениям в бейдже "Автомобильный" — не привязаны
+ * жёстко к "N слева, K справа": какое направление сейчас левее/правее на
+ * экране, определяется проекцией позиций СТОЛБОВ обоих направлений через
+ * текущую камеру (см. useFrame ниже) — работает для любого угла обзора,
+ * не только для пресетов "вдоль"/"поперёк".
+ */
+export interface VehicleCountRefs {
+  left: HTMLDivElement | null;
+  right: HTMLDivElement | null;
 }
 
 /** Ключи ручного спавна — кнопка "Спавн" в каждой плашке интенсивности (GenerationBadges). */
@@ -492,6 +505,47 @@ function applyDetection(
   applyTones(tones, depth, colors);
 }
 
+// I2V видит только трамвай/автобус — не по конусу обзора, а просто в радиусе
+// (isWithinFov с fov_deg=360 у i2v-объекта — на любой угол проходит,
+// остаётся только проверка дальности), поэтому не участвует в
+// detectingColors для машин/пешеходов/спецтехники (см. detection.sensorDevices,
+// он i2v сразу отфильтровывает)
+const I2V_MARK_COLOR = "#ef4444";
+
+/**
+ * То же самое, что applyDetection, но только для трамвая/автобуса —
+ * дополнительно проверяет i2v-датчики (дальность 300 м по умолчанию, без
+ * угла обзора) и, если хотя бы один "видит" агента, добавляет к обычным
+ * цветам детекции ещё и красную полосу поперёк кузова.
+ */
+function applyTransitDetection(
+  slot: Slot,
+  group: THREE.Group | null,
+  tones: (THREE.Mesh | null)[],
+  depth: number,
+  sensors: ReturnType<typeof sensorDevices>,
+  i2vSensors: Crossing["its_devices"],
+  allDevices: Crossing["its_devices"],
+  axis: "x" | "z",
+) {
+  if (!group) return;
+  if (!slot.active) {
+    group.visible = false;
+    return;
+  }
+  const colors = detectingColors(sensors, allDevices, slot.x, slot.z);
+  const seenByI2V = i2vSensors.some((d) => isWithinFov(d, slot.x, slot.z));
+  if (colors.length === 0 && !seenByI2V) {
+    group.visible = false;
+    return;
+  }
+  group.visible = true;
+  group.position.set(slot.x, 0, slot.z);
+  group.rotation.y =
+    axis === "z" ? (slot.dir > 0 ? 0 : Math.PI) : slot.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  applyTones(tones, depth, seenByI2V ? [...colors, I2V_MARK_COLOR] : colors);
+}
+
 /**
  * Отрисовка слота из записанного снимка (историческое воспроизведение) —
  * без детекции сенсоров (она не записывается), фиксированным цветом.
@@ -532,6 +586,7 @@ export function TrafficSimulation({
   selectedSensorIds,
   replay,
   pedCountRef,
+  vehicleCountRef,
   manualSpawnRef,
 }: {
   crossing: Crossing;
@@ -550,6 +605,9 @@ export function TrafficSimulation({
   /** сюда пишутся живые счётчики пешеходов слева/справа — их читает бейдж
    * "Пешеходный" на светофоре (третья строка, под секундами), см. SignalStatusBadge */
   pedCountRef?: RefObject<PedCountRefs>;
+  /** сюда пишутся живые счётчики машин слева/справа НА ЭКРАНЕ (не N/K —
+   * см. VehicleCountRefs) — их читает центральный автомобильный бейдж */
+  vehicleCountRef?: RefObject<VehicleCountRefs>;
   /** запросы кнопки "Спавн" из GenerationBadges — разбираются и очищаются за один кадр */
   manualSpawnRef?: ManualSpawnRef;
 }) {
@@ -562,7 +620,12 @@ export function TrafficSimulation({
         : allSensors,
     [allSensors, selectedSensorIds],
   );
+  const i2vSensors = useMemo(
+    () => crossing.its_devices.filter((d) => d.enabled && d.device_type === "i2v"),
+    [crossing.its_devices],
+  );
   const stopZ = geo.crossingHalf + geo.stopOffset;
+  const vehiclePoles = useMemo(() => poles(geo), [geo]);
 
   const cars = useRef<Slot[]>(makePool(CAR_POOL));
   const peds = useRef<Slot[]>(makePool(PED_POOL));
@@ -763,10 +826,28 @@ export function TrafficSimulation({
         applyDetection(slot, pedGroups.current[i], pedTones.current[i], PED_DEPTH, sensors, crossing.its_devices, "x"),
       );
       trams.current.forEach((slot, i) =>
-        applyDetection(slot, tramGroups.current[i], tramTones.current[i], TRAM_LENGTH, sensors, crossing.its_devices, "z"),
+        applyTransitDetection(
+          slot,
+          tramGroups.current[i],
+          tramTones.current[i],
+          TRAM_LENGTH,
+          sensors,
+          i2vSensors,
+          crossing.its_devices,
+          "z",
+        ),
       );
       buses.current.forEach((slot, i) =>
-        applyDetection(slot, busGroups.current[i], busTones.current[i], BUS_LENGTH, sensors, crossing.its_devices, "z"),
+        applyTransitDetection(
+          slot,
+          busGroups.current[i],
+          busTones.current[i],
+          BUS_LENGTH,
+          sensors,
+          i2vSensors,
+          crossing.its_devices,
+          "z",
+        ),
       );
       specials.current.forEach((slot, i) =>
         applyDetection(
@@ -803,6 +884,31 @@ export function TrafficSimulation({
     if (pedCountRef?.current) {
       if (pedCountRef.current.pedLeft) pedCountRef.current.pedLeft.textContent = `${pedLeft} чел`;
       if (pedCountRef.current.pedRight) pedCountRef.current.pedRight.textContent = `${pedRight} чел`;
+    }
+
+    // счётчики в автомобильном бейдже: какое направление сейчас левее/правее
+    // НА ЭКРАНЕ — не фиксировано, а определяется проекцией позиций обоих
+    // столбов через текущую камеру (работает для любого угла обзора, а не
+    // только для пресетов "вдоль дороги"/"поперёк")
+    if (vehicleCountRef?.current) {
+      const fwdPole = vehiclePoles.find((p) => p.key === "forward");
+      const backPole = vehiclePoles.find((p) => p.key === "backward");
+      let leftCount = forward;
+      let rightCount = backward;
+      if (fwdPole && backPole) {
+        const fx = new THREE.Vector3(fwdPole.x, 0, fwdPole.z).project(state.camera).x;
+        const bx = new THREE.Vector3(backPole.x, 0, backPole.z).project(state.camera).x;
+        if (fx > bx) {
+          leftCount = backward;
+          rightCount = forward;
+        }
+      } else if (fwdPole && !backPole) {
+        leftCount = rightCount = forward;
+      } else if (backPole && !fwdPole) {
+        leftCount = rightCount = backward;
+      }
+      if (vehicleCountRef.current.left) vehicleCountRef.current.left.textContent = String(leftCount);
+      if (vehicleCountRef.current.right) vehicleCountRef.current.right.textContent = String(rightCount);
     }
 
     snapshotElapsed.current += dt;

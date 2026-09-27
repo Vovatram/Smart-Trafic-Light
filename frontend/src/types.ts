@@ -1,6 +1,8 @@
 export type VehicleSignal = "green" | "yellow" | "red";
 export type PedestrianSignal = "walk" | "stop";
-export type DeviceType = "camera" | "microwave" | "loop";
+/** i2v — придорожный блок связи "инфраструктура-транспорт": видит только
+ * общественный транспорт (трамвай/автобус) в радиусе, без угла обзора */
+export type DeviceType = "camera" | "microwave" | "loop" | "i2v";
 export type SignalMode = "manual" | "adaptive" | "cycle" | "button";
 /** остановка ОТ, а не задерживает движение — только визуальная платформа */
 export type StopPosition = "none" | "before" | "after";
