@@ -197,7 +197,10 @@ export function ItsDevices({
   return (
     <group>
       {crossing.its_devices.map((device) => {
-        const color = colorForDevice(crossing.its_devices, device.id);
+        // выключенный объект — приглушённым серым вместо цвета из палитры,
+        // сразу видно, что он не детектирует (детекция всё равно уже
+        // отфильтрована в detection.sensorDevices, это только визуальный сигнал)
+        const color = device.enabled ? colorForDevice(crossing.its_devices, device.id) : "#64748b";
         return device.device_type === "loop" ? (
           <LoopDevice key={device.id} device={device} color={color} selectable={selectable} onSelect={onSelect} />
         ) : (

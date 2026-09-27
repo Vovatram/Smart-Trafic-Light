@@ -25,13 +25,20 @@ export interface ItsDevice {
   view_radius: number | null;
   stream_url: string | null;
   loop_length: number | null;
+  /** выключенный объект ничего не детектирует, но остаётся на сцене (приглушённым) */
+  enabled: boolean;
 }
 
 export type ItsDeviceCreate = Pick<ItsDevice, "device_type" | "x" | "z"> &
-  Partial<Pick<ItsDevice, "height" | "rotation_deg" | "fov_deg" | "view_radius" | "stream_url" | "loop_length">>;
+  Partial<
+    Pick<ItsDevice, "height" | "rotation_deg" | "fov_deg" | "view_radius" | "stream_url" | "loop_length" | "enabled">
+  >;
 
 export type ItsDevicePatch = Partial<
-  Pick<ItsDevice, "x" | "z" | "height" | "rotation_deg" | "fov_deg" | "view_radius" | "stream_url" | "loop_length">
+  Pick<
+    ItsDevice,
+    "x" | "z" | "height" | "rotation_deg" | "fov_deg" | "view_radius" | "stream_url" | "loop_length" | "enabled"
+  >
 >;
 
 export interface CrossingBrief {

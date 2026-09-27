@@ -16,11 +16,14 @@ POLE_DEFAULTS: dict[DeviceType, tuple[float, float]] = {
 class CrossingIn(BaseModel):
     slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9\-]+$")
     name: str = Field(min_length=1, max_length=128)
-    lane_width: float = Field(default=3.5, gt=1.0, le=6.0)
-    lanes_forward: int = Field(default=2, ge=0, le=5)
-    lanes_backward: int = Field(default=2, ge=0, le=5)
-    road_length: float = Field(default=40.0, ge=10.0)  # без верхней границы — по просьбе убрать ограничения на длину
-    crossing_width: float = Field(default=3.0, ge=1.5, le=8.0)
+    # верхних границ нет — по просьбе убрать все ограничения кроме "не в минус";
+    # у геометрических величин нижняя граница > 0 (не 0), чтобы избежать
+    # вырожденной геометрии (нулевая ширина полосы и т.п.)
+    lane_width: float = Field(default=3.5, gt=0)
+    lanes_forward: int = Field(default=2, ge=0)
+    lanes_backward: int = Field(default=2, ge=0)
+    road_length: float = Field(default=40.0, gt=0)
+    crossing_width: float = Field(default=3.0, gt=0)
     # без верхней границы — по просьбе убрать ограничения на интенсивность
     vph_forward: float = Field(default=300.0, ge=0)
     vph_backward: float = Field(default=300.0, ge=0)
@@ -65,11 +68,11 @@ def _check_stop_requires_lane(stop: StopPosition, has_lane: bool, label: str) ->
 
 class CrossingUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
-    lane_width: float | None = Field(default=None, gt=1.0, le=6.0)
-    lanes_forward: int | None = Field(default=None, ge=0, le=5)
-    lanes_backward: int | None = Field(default=None, ge=0, le=5)
-    road_length: float | None = Field(default=None, ge=10.0)
-    crossing_width: float | None = Field(default=None, ge=1.5, le=8.0)
+    lane_width: float | None = Field(default=None, gt=0)
+    lanes_forward: int | None = Field(default=None, ge=0)
+    lanes_backward: int | None = Field(default=None, ge=0)
+    road_length: float | None = Field(default=None, gt=0)
+    crossing_width: float | None = Field(default=None, gt=0)
     vehicle_signal: VehicleSignal | None = None
     pedestrian_signal: PedestrianSignal | None = None
     vph_forward: float | None = Field(default=None, ge=0)
@@ -78,11 +81,11 @@ class CrossingUpdate(BaseModel):
     peds_right_vph: float | None = Field(default=None, ge=0)
     signal_mode: SignalMode | None = None
     active_cycle_id: int | None = None
-    all_red_after_cars_s: float | None = Field(default=None, ge=1, le=15)
-    all_red_after_peds_s: float | None = Field(default=None, ge=1, le=15)
-    button_min_green_s: float | None = Field(default=None, ge=3, le=180)
-    button_peds_s: float | None = Field(default=None, ge=3, le=120)
-    log_retention_hours: float | None = Field(default=None, ge=1, le=720)
+    all_red_after_cars_s: float | None = Field(default=None, ge=0)
+    all_red_after_peds_s: float | None = Field(default=None, ge=0)
+    button_min_green_s: float | None = Field(default=None, ge=0)
+    button_peds_s: float | None = Field(default=None, ge=0)
+    log_retention_hours: float | None = Field(default=None, gt=0)
     has_tram_forward: bool | None = None
     has_tram_backward: bool | None = None
     has_bus_forward: bool | None = None
@@ -103,14 +106,15 @@ class CrossingUpdate(BaseModel):
 
 class ItsDeviceIn(BaseModel):
     device_type: DeviceType
-    x: float = Field(ge=-500, le=500)
-    z: float = Field(ge=-500, le=500)
-    height: float | None = Field(default=None, ge=1.5, le=12)
+    x: float
+    z: float
+    height: float | None = Field(default=None, gt=0)
     rotation_deg: float | None = Field(default=None, ge=0, lt=360)
-    fov_deg: float | None = Field(default=None, ge=5, le=180)
-    view_radius: float | None = Field(default=None, ge=2, le=150)
+    fov_deg: float | None = Field(default=None, gt=0)
+    view_radius: float | None = Field(default=None, gt=0)
     stream_url: str | None = Field(default=None, max_length=512)
-    loop_length: float | None = Field(default=None, ge=0.5, le=5)
+    loop_length: float | None = Field(default=None, gt=0)
+    enabled: bool = True
 
     @model_validator(mode="after")
     def apply_type_rules(self) -> "ItsDeviceIn":
@@ -135,14 +139,15 @@ class ItsDeviceIn(BaseModel):
 
 
 class ItsDeviceUpdate(BaseModel):
-    x: float | None = Field(default=None, ge=-500, le=500)
-    z: float | None = Field(default=None, ge=-500, le=500)
-    height: float | None = Field(default=None, ge=1.5, le=12)
+    x: float | None = None
+    z: float | None = None
+    height: float | None = Field(default=None, gt=0)
     rotation_deg: float | None = Field(default=None, ge=0, lt=360)
-    fov_deg: float | None = Field(default=None, ge=5, le=180)
-    view_radius: float | None = Field(default=None, ge=2, le=150)
+    fov_deg: float | None = Field(default=None, gt=0)
+    view_radius: float | None = Field(default=None, gt=0)
     stream_url: str | None = Field(default=None, max_length=512)
-    loop_length: float | None = Field(default=None, ge=0.5, le=5)
+    loop_length: float | None = Field(default=None, gt=0)
+    enabled: bool | None = None
 
 
 class ItsDeviceOut(BaseModel):
@@ -158,18 +163,19 @@ class ItsDeviceOut(BaseModel):
     view_radius: float | None
     stream_url: str | None
     loop_length: float | None
+    enabled: bool
 
 
 class SignalCycleIn(BaseModel):
     name: str = Field(min_length=1, max_length=64)
-    green_cars_s: float = Field(default=40.0, ge=3, le=180)
-    green_peds_s: float = Field(default=15.0, ge=3, le=120)
+    green_cars_s: float = Field(default=40.0, ge=0)
+    green_peds_s: float = Field(default=15.0, ge=0)
 
 
 class SignalCycleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=64)
-    green_cars_s: float | None = Field(default=None, ge=3, le=180)
-    green_peds_s: float | None = Field(default=None, ge=3, le=120)
+    green_cars_s: float | None = Field(default=None, ge=0)
+    green_peds_s: float | None = Field(default=None, ge=0)
 
 
 class SignalCycleOut(BaseModel):

@@ -3,10 +3,10 @@ import { colorForDevice } from "./deviceColors";
 
 const DEG2RAD = Math.PI / 180;
 
-/** Только камера/датчик имеют зону обзора (fov + радиус) — петля не в счёт. */
+/** Только камера/датчик имеют зону обзора (fov + радиус) — петля не в счёт; выключенные не детектируют. */
 export function sensorDevices(devices: ItsDevice[]): ItsDevice[] {
   return devices.filter(
-    (d) => d.device_type !== "loop" && d.fov_deg != null && d.view_radius != null,
+    (d) => d.enabled && d.device_type !== "loop" && d.fov_deg != null && d.view_radius != null,
   );
 }
 

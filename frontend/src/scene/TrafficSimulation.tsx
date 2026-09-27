@@ -11,6 +11,8 @@ import { detectingColors, sensorDevices } from "./detection";
 import {
   busLaneIndex,
   carLaneIndices,
+  isBusLane,
+  isTramLane,
   laneCenterX,
   roadGeometry,
   sidewalkX,
@@ -182,6 +184,23 @@ function trySpawnInLanes(
       slot.dwelled = false;
       slot.dwellUntil = 0;
     }
+  }
+}
+
+/**
+ * Если полосу только что объявили трамвайной/автобусной (чекбокс включили
+ * посреди симуляции), машины/спецтехника, которые уже были в этой полосе,
+ * иначе продолжали бы ехать по ней как ни в чём не бывало — в том числе
+ * через саму остановку. Восстанавливаем номер полосы из x (обратное к
+ * laneCenterX) и снимаем агента с трассы, если полоса ему больше не
+ * принадлежит; новые туда уже не спавнятся (см. trySpawnInLanes).
+ */
+function purgeForbiddenLane(pool: Slot[], geo: RoadGeometry) {
+  for (const s of pool) {
+    if (!s.active) continue;
+    const dir = s.dir > 0 ? "forward" : "backward";
+    const lane = Math.round(Math.abs(s.x) / geo.laneWidth - 0.5);
+    if (isTramLane(geo, dir, lane) || isBusLane(geo, dir, lane)) s.active = false;
   }
 }
 
@@ -586,6 +605,11 @@ export function TrafficSimulation({
     }
     const carLanesFwd = carLaneIndices(geo, "forward");
     const carLanesBack = carLaneIndices(geo, "backward");
+
+    // машины/спецтехника, застрявшие в полосе, которую только что сделали
+    // трамвайной/автобусной — снимаем немедленно, ещё до спавна и движения
+    purgeForbiddenLane(cars.current, geo);
+    purgeForbiddenLane(specials.current, geo);
 
     // разбираем и сразу очищаем запросы кнопки "Спавн" — каждый обрабатывается ровно один раз
     const manual = manualSpawnRef?.current;

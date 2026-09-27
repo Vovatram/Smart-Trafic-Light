@@ -165,8 +165,8 @@ export function SignalModePanel({
                 label="Зелёный машинам"
                 value={draft.green_cars_s}
                 unit=" с"
-                min={3}
-                max={180}
+                min={0}
+                max={100000}
                 step={5}
                 onChange={(green_cars_s) => setDraft((d) => ({ ...d, green_cars_s }))}
               />
@@ -174,8 +174,8 @@ export function SignalModePanel({
                 label="Зелёный пешеходам"
                 value={draft.green_peds_s}
                 unit=" с"
-                min={3}
-                max={120}
+                min={0}
+                max={100000}
                 step={5}
                 onChange={(green_peds_s) => setDraft((d) => ({ ...d, green_peds_s }))}
               />
@@ -202,8 +202,8 @@ export function SignalModePanel({
             label="Мин. зелёный машинам"
             value={crossing.button_min_green_s}
             unit=" с"
-            min={3}
-            max={180}
+            min={0}
+            max={100000}
             step={5}
             disabled={busy}
             onChange={onButtonMinGreenChange}
@@ -212,8 +212,8 @@ export function SignalModePanel({
             label="Зелёный пешеходам"
             value={crossing.button_peds_s}
             unit=" с"
-            min={3}
-            max={120}
+            min={0}
+            max={100000}
             step={5}
             disabled={busy}
             onChange={onButtonPedsChange}
@@ -235,8 +235,8 @@ export function SignalModePanel({
             label="Красный всем после машин"
             value={crossing.all_red_after_cars_s}
             unit=" с"
-            min={1}
-            max={15}
+            min={0}
+            max={100000}
             step={1}
             disabled={busy}
             onChange={onAllRedAfterCarsChange}
@@ -245,8 +245,8 @@ export function SignalModePanel({
             label="Красный всем после пешеходов"
             value={crossing.all_red_after_peds_s}
             unit=" с"
-            min={1}
-            max={15}
+            min={0}
+            max={100000}
             step={1}
             disabled={busy}
             onChange={onAllRedAfterPedsChange}

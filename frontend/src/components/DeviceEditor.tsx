@@ -1,5 +1,5 @@
 import type { DeviceType, ItsDevice, ItsDevicePatch } from "../types";
-import { Button, Card, Stepper, TextField } from "./ui";
+import { Button, Card, Checkbox, Stepper, TextField } from "./ui";
 
 const DEVICE_LABEL: Record<DeviceType, string> = {
   camera: "Камера",
@@ -25,12 +25,18 @@ export function DeviceEditor({
   return (
     <Card title={`Редактирование: ${DEVICE_LABEL[device.device_type]} №${device.id}`}>
       <div className="space-y-2.5">
+        <Checkbox
+          label="Включён"
+          checked={device.enabled}
+          disabled={busy}
+          onChange={(enabled) => onChange({ enabled })}
+        />
         <Stepper
           label="Позиция X"
           value={device.x}
           unit=" м"
-          min={-500}
-          max={500}
+          min={-100000}
+          max={100000}
           step={0.5}
           disabled={busy}
           onChange={(x) => onChange({ x })}
@@ -39,8 +45,8 @@ export function DeviceEditor({
           label="Позиция Z"
           value={device.z}
           unit=" м"
-          min={-500}
-          max={500}
+          min={-100000}
+          max={100000}
           step={0.5}
           disabled={busy}
           onChange={(z) => onChange({ z })}
@@ -51,8 +57,8 @@ export function DeviceEditor({
             label="Длина петли"
             value={device.loop_length ?? 2}
             unit=" м"
-            min={0.5}
-            max={5}
+            min={0.1}
+            max={100000}
             step={0.5}
             disabled={busy}
             onChange={(loop_length) => onChange({ loop_length })}
@@ -63,8 +69,8 @@ export function DeviceEditor({
               label="Высота столба"
               value={device.height ?? 5}
               unit=" м"
-              min={1.5}
-              max={12}
+              min={0.1}
+              max={100000}
               step={0.5}
               disabled={busy}
               onChange={(height) => onChange({ height })}
@@ -84,8 +90,8 @@ export function DeviceEditor({
               label="Угол обзора"
               value={device.fov_deg ?? 60}
               unit="°"
-              min={5}
-              max={180}
+              min={0.1}
+              max={100000}
               step={5}
               disabled={busy}
               onChange={(fov_deg) => onChange({ fov_deg })}
@@ -94,8 +100,8 @@ export function DeviceEditor({
               label="Радиус обзора"
               value={device.view_radius ?? 35}
               unit=" м"
-              min={2}
-              max={150}
+              min={0.1}
+              max={100000}
               step={5}
               disabled={busy}
               onChange={(view_radius) => onChange({ view_radius })}

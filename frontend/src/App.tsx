@@ -151,6 +151,11 @@ export default function App() {
     [run],
   );
 
+  const onToggleDeviceEnabled = useCallback(
+    (id: number, enabled: boolean) => onChangeDevice(id, { enabled }),
+    [onChangeDevice],
+  );
+
   const onDeleteDevice = useCallback(
     (id: number) => {
       void run(() =>
@@ -331,6 +336,7 @@ export default function App() {
           onStopPlacing={onStopPlacing}
           selectedDeviceIds={selectedDeviceIds}
           onSelectDevice={onSelectDevice}
+          onToggleDeviceEnabled={onToggleDeviceEnabled}
           generationOpen={generationPanelOpen}
           onGenerationOpenChange={onGenerationOpenChange}
           onOpenHistory={openHistory}

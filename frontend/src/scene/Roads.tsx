@@ -5,6 +5,8 @@ import * as THREE from "three";
 import type { Crossing } from "../types";
 import {
   busLaneIndex,
+  isBusLane,
+  isTramLane,
   laneCenterX,
   roadGeometry,
   STOP_MARKER_LENGTH,
@@ -95,13 +97,24 @@ function useMarkings(crossing: Crossing): Box[] {
       }
     }
 
-    // прерывистые между полосами одного направления
+    // прерывистые между обычными полосами одного направления; но если с
+    // одной из сторон границы — трамвайная/автобусная полоса, разметка
+    // сплошная (как в жизни — на такую полосу не перестраиваются)
     const dashed = (x: number) => {
       for (let z = -L + 3; z < -gap - 1; z += 6) boxes.push({ x, z: z + 1.5, sx: 0.12, sz: 3 });
       for (let z = gap + 1; z < L - 3; z += 6) boxes.push({ x, z: z + 1.5, sx: 0.12, sz: 3 });
     };
-    for (let i = 1; i < geo.lanesForward; i += 1) dashed(-i * w);
-    for (let i = 1; i < geo.lanesBackward; i += 1) dashed(i * w);
+    const solid = (x: number) => boxes.push({ x, z: 0, sx: 0.14, sz: L * 2 });
+    const isReservedLane = (dir: "forward" | "backward", lane: number) =>
+      isTramLane(geo, dir, lane) || isBusLane(geo, dir, lane);
+    for (let i = 1; i < geo.lanesForward; i += 1) {
+      const boundarySpecial = isReservedLane("forward", i - 1) || isReservedLane("forward", i);
+      (boundarySpecial ? solid : dashed)(-i * w);
+    }
+    for (let i = 1; i < geo.lanesBackward; i += 1) {
+      const boundarySpecial = isReservedLane("backward", i - 1) || isReservedLane("backward", i);
+      (boundarySpecial ? solid : dashed)(i * w);
+    }
 
     // сплошные по внешним краям проезжей части
     if (geo.rightEdge > 0) boxes.push({ x: geo.rightEdge - 0.07, z: 0, sx: 0.14, sz: L * 2 });

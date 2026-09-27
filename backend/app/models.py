@@ -74,19 +74,16 @@ class Crossing(Base):
 
     __tablename__ = "crossings"
     __table_args__ = (
-        CheckConstraint("lanes_forward between 0 and 5", name="ck_lanes_forward"),
-        CheckConstraint("lanes_backward between 0 and 5", name="ck_lanes_backward"),
+        # без верхних границ — по просьбе убрать все ограничения кроме "не в
+        # минус"; нижнюю границу для длительностей/интенсивности (>=0) и
+        # геометрии (>0, чтобы не вырождалась) проверяет Pydantic — здесь
+        # только то, что реально должно жить как CHECK в самой БД
+        CheckConstraint("lanes_forward >= 0", name="ck_lanes_forward"),
+        CheckConstraint("lanes_backward >= 0", name="ck_lanes_backward"),
         CheckConstraint("lanes_forward + lanes_backward >= 1", name="ck_lanes_total"),
         CheckConstraint("lane_width > 0", name="ck_lane_width"),
         CheckConstraint("road_length > 0", name="ck_road_length"),
         CheckConstraint("crossing_width > 0", name="ck_crossing_width"),
-        # интенсивность (vph_*, tram/bus/special_vph_*) — без верхней границы,
-        # по просьбе убрать ограничения; нижнюю (>=0) проверяет Pydantic
-        CheckConstraint("all_red_after_cars_s between 1 and 15", name="ck_all_red_after_cars"),
-        CheckConstraint("all_red_after_peds_s between 1 and 15", name="ck_all_red_after_peds"),
-        CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
-        CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
-        CheckConstraint("log_retention_hours between 1 and 720", name="ck_log_retention"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -196,18 +193,15 @@ class ItsDevice(Base):
 
     __tablename__ = "its_devices"
     __table_args__ = (
-        CheckConstraint("height is null or height between 1.5 and 12", name="ck_device_height"),
+        # без верхних границ — по просьбе убрать все ограничения кроме "не в минус"
+        CheckConstraint("height is null or height > 0", name="ck_device_height"),
         CheckConstraint(
             "rotation_deg is null or (rotation_deg >= 0 and rotation_deg < 360)",
             name="ck_device_rotation",
         ),
-        CheckConstraint("fov_deg is null or fov_deg between 5 and 180", name="ck_device_fov"),
-        CheckConstraint(
-            "view_radius is null or view_radius between 2 and 150", name="ck_device_radius"
-        ),
-        CheckConstraint(
-            "loop_length is null or loop_length between 0.5 and 5", name="ck_device_loop_length"
-        ),
+        CheckConstraint("fov_deg is null or fov_deg > 0", name="ck_device_fov"),
+        CheckConstraint("view_radius is null or view_radius > 0", name="ck_device_radius"),
+        CheckConstraint("loop_length is null or loop_length > 0", name="ck_device_loop_length"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -228,6 +222,11 @@ class ItsDevice(Base):
     # индукционная петля
     loop_length: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # выключенный объект ничего не детектирует (см. detection.sensorDevices
+    # на фронтенде) — сам объект и его сектор обзора при этом остаются на
+    # сцене, просто приглушённые, а не удаляются
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     crossing: Mapped[Crossing] = relationship(back_populates="its_devices")
@@ -242,8 +241,8 @@ class SignalCycle(Base):
 
     __tablename__ = "signal_cycles"
     __table_args__ = (
-        CheckConstraint("green_cars_s between 3 and 180", name="ck_cycle_green_cars"),
-        CheckConstraint("green_peds_s between 3 and 120", name="ck_cycle_green_peds"),
+        CheckConstraint("green_cars_s >= 0", name="ck_cycle_green_cars"),
+        CheckConstraint("green_peds_s >= 0", name="ck_cycle_green_peds"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 /**
@@ -55,6 +55,51 @@ export function Button({ variant = "ghost", active = false, className = "", ...r
   return <button className={`${base} ${styles} ${className}`} {...rest} />;
 }
 
+const HOLD_DELAY_MS = 400; // задержка перед началом автоповтора
+const HOLD_INTERVAL_MS = 70; // частота автоповтора при зажатой кнопке
+
+/**
+ * +/- зажимаются: mousedown/touchstart сразу делает один шаг, затем (если
+ * не отпустили) через HOLD_DELAY_MS начинается автоповтор. Шаги считаются
+ * от pendingRef, а не от value-пропа — value обновляется только после
+ * ответа сервера (onChange обычно триггерит PATCH), и к моменту следующего
+ * тика автоповтора проп ещё не успел бы дойти, из-за чего повтор просто
+ * слал бы то же самое значение снова и снова вместо накопления.
+ */
+function useHoldRepeat(value: number, step: number, clamp: (n: number) => number, onChange: (value: number) => void) {
+  const pendingRef = useRef(value);
+  const timeoutRef = useRef<number | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const stop = () => {
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+    timeoutRef.current = null;
+    intervalRef.current = null;
+  };
+
+  useEffect(() => stop, []);
+
+  const start = (dir: 1 | -1) => {
+    pendingRef.current = value;
+    const tick = () => {
+      const next = clamp(pendingRef.current + dir * step);
+      if (next === pendingRef.current) {
+        stop();
+        return;
+      }
+      pendingRef.current = next;
+      onChange(next);
+    };
+    tick(); // первый шаг — сразу, как обычный клик
+    timeoutRef.current = window.setTimeout(() => {
+      intervalRef.current = window.setInterval(tick, HOLD_INTERVAL_MS);
+    }, HOLD_DELAY_MS);
+  };
+
+  return { start, stop };
+}
+
 export function Stepper({
   label,
   value,
@@ -83,13 +128,19 @@ export function Stepper({
     const period = max - min;
     return round(min + (((n - min) % period) + period) % period);
   };
+  const dec = useHoldRepeat(value, step, clamp, onChange);
+  const inc = useHoldRepeat(value, step, clamp, onChange);
+
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm text-slate-300">{label}</span>
       <div className="flex items-center gap-1.5">
         <Button
           disabled={disabled || (!wrap && value <= min)}
-          onClick={() => onChange(clamp(value - step))}
+          onPointerDown={() => dec.start(-1)}
+          onPointerUp={dec.stop}
+          onPointerLeave={dec.stop}
+          onPointerCancel={dec.stop}
           className="!px-2 !py-1"
         >
           −
@@ -100,7 +151,10 @@ export function Stepper({
         </span>
         <Button
           disabled={disabled || (!wrap && value >= max)}
-          onClick={() => onChange(clamp(value + step))}
+          onPointerDown={() => inc.start(1)}
+          onPointerUp={inc.stop}
+          onPointerLeave={inc.stop}
+          onPointerCancel={inc.stop}
           className="!px-2 !py-1"
         >
           +

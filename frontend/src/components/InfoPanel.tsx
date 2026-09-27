@@ -89,6 +89,7 @@ export function InfoPanel({
   onStopPlacing,
   selectedDeviceIds,
   onSelectDevice,
+  onToggleDeviceEnabled,
   generationOpen,
   onGenerationOpenChange,
   onOpenHistory,
@@ -110,6 +111,7 @@ export function InfoPanel({
   onStopPlacing: () => void;
   selectedDeviceIds: ReadonlySet<number>;
   onSelectDevice: (id: number) => void;
+  onToggleDeviceEnabled: (id: number, enabled: boolean) => void;
   generationOpen: boolean;
   onGenerationOpenChange: (open: boolean) => void;
   onOpenHistory: (tab: "journal" | "charts") => void;
@@ -138,7 +140,7 @@ export function InfoPanel({
               label="Полос «вперёд» (N)"
               value={crossing.lanes_forward}
               min={0}
-              max={5}
+              max={1000}
               disabled={busy}
               onChange={onLanesForward}
             />
@@ -146,7 +148,7 @@ export function InfoPanel({
               label="Полос «назад» (K)"
               value={crossing.lanes_backward}
               min={0}
-              max={5}
+              max={1000}
               disabled={busy}
               onChange={onLanesBackward}
             />
@@ -154,7 +156,7 @@ export function InfoPanel({
               label="Длина дороги"
               value={crossing.road_length}
               unit=" м"
-              min={10}
+              min={1}
               max={100000}
               step={5}
               disabled={busy}
@@ -164,8 +166,8 @@ export function InfoPanel({
               label="Хранить журнал"
               value={crossing.log_retention_hours}
               unit=" ч"
-              min={1}
-              max={720}
+              min={0.1}
+              max={100000}
               step={1}
               disabled={busy}
               onChange={onLogRetentionChange}
@@ -256,15 +258,24 @@ export function InfoPanel({
           {crossing.its_devices.length > 0 && (
             <div className="space-y-1">
               {crossing.its_devices.map((device) => (
-                <Button
-                  key={device.id}
-                  active={selectedDeviceIds.has(device.id)}
-                  disabled={busy}
-                  className="w-full text-left"
-                  onClick={() => onSelectDevice(device.id)}
-                >
-                  {DEVICE_LABEL[device.device_type]} №{device.id}
-                </Button>
+                <div key={device.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={device.enabled}
+                    disabled={busy}
+                    onChange={(event) => onToggleDeviceEnabled(device.id, event.target.checked)}
+                    title="Включён"
+                    className="h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-800 accent-sky-500"
+                  />
+                  <Button
+                    active={selectedDeviceIds.has(device.id)}
+                    disabled={busy}
+                    className={`w-full text-left ${device.enabled ? "" : "opacity-50"}`}
+                    onClick={() => onSelectDevice(device.id)}
+                  >
+                    {DEVICE_LABEL[device.device_type]} №{device.id}
+                  </Button>
+                </div>
               ))}
             </div>
           )}
