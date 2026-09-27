@@ -14,6 +14,7 @@ import {
   laneCenterX,
   roadGeometry,
   sidewalkX,
+  stopMarkerPosition,
   tramLaneIndex,
   type RoadGeometry,
 } from "./layout";
@@ -86,24 +87,29 @@ const LANE_EPS = 0.5; // допуск, чтобы считать двух аге
 const HIDDEN_COLOR = "#334155"; // цвет "по умолчанию" — виден только пока идёт transition, реально не рендерится
 
 // трамвай/автобус едут по своей выделенной полосе (если она включена),
-// спецтехника — по обычным полосам вместе с машинами
+// спецтехника — по обычным полосам вместе с машинами. MIN_GAP у каждого
+// заметно больше его собственной длины (как у машин: 6.5 > 4.4) — иначе при
+// очереди на красный агенты считаются "далеко друг от друга" ещё до того,
+// как их кузова реально перестанут перекрываться, и визуально сталкиваются.
 const TRAM_POOL = 4;
 const TRAM_SPEED = 7;
 const TRAM_LENGTH = 16;
 const TRAM_WIDTH = 2.4;
-const TRAM_MIN_GAP = 10;
+const TRAM_MIN_GAP = 20;
 
 const BUS_POOL = 6;
 const BUS_SPEED = 8;
 const BUS_LENGTH = 11;
 const BUS_WIDTH = 2.5;
-const BUS_MIN_GAP = 8;
+const BUS_MIN_GAP = 15;
 
 const SPECIAL_POOL = 6;
 const SPECIAL_SPEED = 11;
 const SPECIAL_LENGTH = 5.2;
 const SPECIAL_WIDTH = 2.0;
 const SPECIAL_MIN_GAP = 7;
+
+const DWELL_SECONDS = 20; // сколько трамвай/автобус стоит на своей остановке
 
 /** Слот пула: переиспользуемое состояние одного агента (машины или пешехода). */
 interface Slot {
@@ -112,10 +118,21 @@ interface Slot {
   z: number;
   /** направление движения: для машин вдоль Z, для пешеходов вдоль X */
   dir: 1 | -1;
+  /** уже отстоял на своей остановке (чтобы не запускать повторно) — используют только трамвай/автобус */
+  dwelled: boolean;
+  /** секунд осталось стоять на остановке; > 0 — агент не двигается */
+  dwellUntil: number;
 }
 
 function makePool(n: number): Slot[] {
-  return Array.from({ length: n }, () => ({ active: false, x: 0, z: 0, dir: 1 }));
+  return Array.from({ length: n }, () => ({
+    active: false,
+    x: 0,
+    z: 0,
+    dir: 1,
+    dwelled: false,
+    dwellUntil: 0,
+  }));
 }
 
 /**
@@ -147,6 +164,8 @@ function trySpawnInLanes(
       slot.dir = 1;
       slot.x = laneCenterX(geo, "forward", lane);
       slot.z = -geo.roadLength;
+      slot.dwelled = false;
+      slot.dwellUntil = 0;
     }
   }
   if (
@@ -160,6 +179,8 @@ function trySpawnInLanes(
       slot.dir = -1;
       slot.x = laneCenterX(geo, "backward", lane);
       slot.z = geo.roadLength;
+      slot.dwelled = false;
+      slot.dwellUntil = 0;
     }
   }
 }
@@ -202,12 +223,14 @@ function trySpawnPeds(
  * Урезает желаемую скорость до 0, если впереди в той же полосе (тот же dir,
  * та же "боковая" координата с точностью LANE_EPS) слишком близко другой
  * активный агент — простая очередь без формул IDM, но без наложения машин
- * друг на друга у стоп-линии.
+ * друг на друга у стоп-линии. obstacles — не обязательно тот же пул, что
+ * движется: машины и спецтехника делят одни и те же полосы, поэтому должны
+ * видеть друг друга как препятствие, а не только агентов своего типа.
  */
-function gapLimitedSpeed(pool: Slot[], self: Slot, axis: "x" | "z", desired: number, minGap: number): number {
+function gapLimitedSpeed(obstacles: Slot[], self: Slot, axis: "x" | "z", desired: number, minGap: number): number {
   if (desired === 0) return 0;
   let nearestGap = Infinity;
-  for (const other of pool) {
+  for (const other of obstacles) {
     if (other === self || !other.active || other.dir !== self.dir) continue;
     const lateral = axis === "z" ? other.x - self.x : other.z - self.z;
     if (Math.abs(lateral) > LANE_EPS) continue;
@@ -218,15 +241,28 @@ function gapLimitedSpeed(pool: Slot[], self: Slot, axis: "x" | "z", desired: num
   return nearestGap < minGap ? 0 : desired;
 }
 
+/** На какой Z и на сколько секунд встать — считается один раз в кадр в TrafficSimulation, передаётся сюда. */
+interface DwellConfig {
+  forwardStop: number | null;
+  backwardStop: number | null;
+  seconds: number;
+}
+
 /**
  * Двигает агента вдоль его оси на gap-limited скорости и, если сигнал не
  * пускает и он ещё не пересёк границу (gate, симметрично ±gate от центра),
  * не даёт ему проехать дальше неё — сама скорость при этом не трогается,
  * поэтому агент едет к границе нормально и тормозит уже вплотную к ней, а
  * не сразу при спавне. Тот, кто уже за границей, идёт дальше без ограничений.
+ *
+ * dwell (только трамвай/автобус) — если агент впервые достиг координаты
+ * своей остановки, он замирает на dwell.seconds секунд (обычное движение и
+ * gap-check в эти кадры не считаются — он просто стоит, как и положено
+ * агенту, ожидающему своей очереди позади).
  */
 function advanceWithGate(
   pool: Slot[],
+  obstacles: Slot[],
   dt: number,
   axis: "x" | "z",
   speed: number,
@@ -234,14 +270,31 @@ function advanceWithGate(
   go: boolean,
   gate: number,
   bound: { min: number; max: number },
+  dwell?: DwellConfig,
 ) {
   for (const s of pool) {
     if (!s.active) continue;
+
+    if (dwell) {
+      const stopAt = s.dir > 0 ? dwell.forwardStop : dwell.backwardStop;
+      if (!s.dwelled && stopAt !== null) {
+        const reached = s.dir > 0 ? s.z >= stopAt : s.z <= stopAt;
+        if (reached) {
+          s.dwelled = true;
+          s.dwellUntil = dwell.seconds;
+        }
+      }
+      if (s.dwellUntil > 0) {
+        s.dwellUntil = Math.max(0, s.dwellUntil - dt);
+        continue; // стоит на остановке — не двигаем в этом кадре
+      }
+    }
+
     const coord = axis === "z" ? s.z : s.x;
     // строго ">" / "<": стоя ровно на линии агент ещё не "пересёк" её — иначе
     // на кадре после остановки coord === -gate и "уже пересёк" пускает его дальше
     const crossedGate = s.dir > 0 ? coord > -gate : coord < gate;
-    const limited = gapLimitedSpeed(pool, s, axis, speed, minGap);
+    const limited = gapLimitedSpeed(obstacles, s, axis, speed, minGap);
     let next = coord + s.dir * limited * dt;
     if (!go && !crossedGate) {
       next = s.dir > 0 ? Math.min(next, -gate) : Math.max(next, gate);
@@ -265,18 +318,28 @@ function advanceWithGate(
  */
 function advanceVehicles(
   pool: Slot[],
+  obstacles: Slot[],
   length: number,
   speed: number,
   minGap: number,
   green: boolean,
   dt: number,
   geo: RoadGeometry,
+  dwell?: DwellConfig,
 ) {
   const stopZ = geo.crossingHalf + geo.stopOffset + length / 2;
-  advanceWithGate(pool, dt, "z", speed, minGap, green, stopZ, {
-    min: -geo.roadLength,
-    max: geo.roadLength,
-  });
+  advanceWithGate(
+    pool,
+    obstacles,
+    dt,
+    "z",
+    speed,
+    minGap,
+    green,
+    stopZ,
+    { min: -geo.roadLength, max: geo.roadLength },
+    dwell,
+  );
 }
 
 /**
@@ -489,9 +552,16 @@ export function TrafficSimulation({
   const specialGroups = useRef<(THREE.Group | null)[]>([]);
   const specialHalvesA = useRef<(THREE.Mesh | null)[]>([]);
   const specialHalvesB = useRef<(THREE.Mesh | null)[]>([]);
+  const specialBeacons = useRef<(THREE.Mesh | null)[]>([]);
 
-  useFrame((_, rawDelta) => {
+  useFrame((state, rawDelta) => {
     const dt = Math.min(rawDelta, 0.1);
+    // маячок спецтехники — мигает красным/синим независимо от детекции и replay
+    const beaconOn = Math.floor(state.clock.elapsedTime * 4) % 2 === 0;
+    const beaconColor = beaconOn ? "#ef4444" : "#2563eb";
+    for (const mesh of specialBeacons.current) {
+      if (mesh) (mesh.material as THREE.MeshStandardMaterial).emissive.set(beaconColor);
+    }
     const carLanesFwd = carLaneIndices(geo, "forward");
     const carLanesBack = carLaneIndices(geo, "backward");
 
@@ -512,6 +582,25 @@ export function TrafficSimulation({
     const forceTramBack = consume("tram-backward");
     const forceBusFwd = consume("bus-forward");
     const forceBusBack = consume("bus-backward");
+
+    const tramDwell: DwellConfig = {
+      forwardStop: geo.hasTramForward
+        ? stopMarkerPosition(geo, "forward", tramLaneIndex(), geo.tramStopForward)?.z ?? null
+        : null,
+      backwardStop: geo.hasTramBackward
+        ? stopMarkerPosition(geo, "backward", tramLaneIndex(), geo.tramStopBackward)?.z ?? null
+        : null,
+      seconds: DWELL_SECONDS,
+    };
+    const busDwell: DwellConfig = {
+      forwardStop: geo.hasBusForward
+        ? stopMarkerPosition(geo, "forward", busLaneIndex(geo, "forward"), geo.busStopForward)?.z ?? null
+        : null,
+      backwardStop: geo.hasBusBackward
+        ? stopMarkerPosition(geo, "backward", busLaneIndex(geo, "backward"), geo.busStopBackward)?.z ?? null
+        : null,
+      seconds: DWELL_SECONDS,
+    };
 
     trySpawnInLanes(
       cars.current,
@@ -560,10 +649,34 @@ export function TrafficSimulation({
     trySpawnPeds(peds.current, geo, crossing, dt, forcePedLeft, forcePedRight);
 
     const green = vehicleSignal === "green";
-    advanceVehicles(cars.current, CAR_LENGTH, CAR_SPEED, CAR_MIN_GAP, green, dt, geo);
-    advanceVehicles(specials.current, SPECIAL_LENGTH, SPECIAL_SPEED, SPECIAL_MIN_GAP, green, dt, geo);
-    advanceVehicles(trams.current, TRAM_LENGTH, TRAM_SPEED, TRAM_MIN_GAP, green, dt, geo);
-    advanceVehicles(buses.current, BUS_LENGTH, BUS_SPEED, BUS_MIN_GAP, green, dt, geo);
+    // машины и спецтехника делят одни и те же полосы — гап друг для друга
+    // считается по ОБЪЕДИНЁННОМУ списку, иначе спецтехника проезжает машины
+    // насквозь (и наоборот), как будто их вовсе нет
+    const carLaneObstacles = [...cars.current, ...specials.current];
+    advanceVehicles(cars.current, carLaneObstacles, CAR_LENGTH, CAR_SPEED, CAR_MIN_GAP, green, dt, geo);
+    advanceVehicles(specials.current, carLaneObstacles, SPECIAL_LENGTH, SPECIAL_SPEED, SPECIAL_MIN_GAP, green, dt, geo);
+    advanceVehicles(
+      trams.current,
+      trams.current,
+      TRAM_LENGTH,
+      TRAM_SPEED,
+      TRAM_MIN_GAP,
+      green,
+      dt,
+      geo,
+      tramDwell,
+    );
+    advanceVehicles(
+      buses.current,
+      buses.current,
+      BUS_LENGTH,
+      BUS_SPEED,
+      BUS_MIN_GAP,
+      green,
+      dt,
+      geo,
+      busDwell,
+    );
     advancePeds(peds.current, pedestrianSignal === "walk", dt, geo, onPedestrianWaiting);
 
     // историческое воспроизведение подменяет ТОЛЬКО отрисовку — сама
@@ -753,6 +866,11 @@ export function TrafficSimulation({
             refA={(el) => (specialHalvesA.current[i] = el)}
             refB={(el) => (specialHalvesB.current[i] = el)}
           />
+          {/* маячок — цвет мигает в useFrame, независимо от раскраски детекции */}
+          <mesh ref={(el) => (specialBeacons.current[i] = el)} position={[0, 1.55, 0]}>
+            <sphereGeometry args={[0.14, 8, 8]} />
+            <meshStandardMaterial color="#1c1c1c" emissive="#ef4444" emissiveIntensity={3} />
+          </mesh>
         </group>
       ))}
       {showCounts && (

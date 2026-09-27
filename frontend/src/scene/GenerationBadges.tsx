@@ -9,27 +9,20 @@ interface Entry {
   label: string;
   field: keyof CrossingPatch;
   unit: string;
-  max: number;
 }
 
 /** Всё, что реально едет "вперёд" с этого конца дороги: машины (всегда, если есть полосы), спецтехника, трамвай/автобус (только если включена их полоса). */
 function forwardCluster(geo: RoadGeometry): Entry[] {
   const entries: Entry[] = [];
   if (geo.lanesForward > 0) {
-    entries.push({ spawnKind: "forward", label: "Машины →", field: "vph_forward", unit: "авто/ч", max: 2000 });
-    entries.push({
-      spawnKind: "special-forward",
-      label: "Спецтехника →",
-      field: "special_vph_forward",
-      unit: "ед/ч",
-      max: 30,
-    });
+    entries.push({ spawnKind: "forward", label: "Машины →", field: "vph_forward", unit: "авто/ч" });
+    entries.push({ spawnKind: "special-forward", label: "Спецтехника →", field: "special_vph_forward", unit: "ед/ч" });
   }
   if (geo.hasTramForward) {
-    entries.push({ spawnKind: "tram-forward", label: "Трамвай →", field: "tram_vph_forward", unit: "ед/ч", max: 60 });
+    entries.push({ spawnKind: "tram-forward", label: "Трамвай →", field: "tram_vph_forward", unit: "ед/ч" });
   }
   if (geo.hasBusForward) {
-    entries.push({ spawnKind: "bus-forward", label: "Автобус →", field: "bus_vph_forward", unit: "ед/ч", max: 60 });
+    entries.push({ spawnKind: "bus-forward", label: "Автобус →", field: "bus_vph_forward", unit: "ед/ч" });
   }
   return entries;
 }
@@ -37,20 +30,19 @@ function forwardCluster(geo: RoadGeometry): Entry[] {
 function backwardCluster(geo: RoadGeometry): Entry[] {
   const entries: Entry[] = [];
   if (geo.lanesBackward > 0) {
-    entries.push({ spawnKind: "backward", label: "Машины ←", field: "vph_backward", unit: "авто/ч", max: 2000 });
+    entries.push({ spawnKind: "backward", label: "Машины ←", field: "vph_backward", unit: "авто/ч" });
     entries.push({
       spawnKind: "special-backward",
       label: "Спецтехника ←",
       field: "special_vph_backward",
       unit: "ед/ч",
-      max: 30,
     });
   }
   if (geo.hasTramBackward) {
-    entries.push({ spawnKind: "tram-backward", label: "Трамвай ←", field: "tram_vph_backward", unit: "ед/ч", max: 60 });
+    entries.push({ spawnKind: "tram-backward", label: "Трамвай ←", field: "tram_vph_backward", unit: "ед/ч" });
   }
   if (geo.hasBusBackward) {
-    entries.push({ spawnKind: "bus-backward", label: "Автобус ←", field: "bus_vph_backward", unit: "ед/ч", max: 60 });
+    entries.push({ spawnKind: "bus-backward", label: "Автобус ←", field: "bus_vph_backward", unit: "ед/ч" });
   }
   return entries;
 }
@@ -70,7 +62,6 @@ function IntensityInput({
   z,
   label,
   unit,
-  max,
   value,
   onChange,
   onSpawn,
@@ -79,7 +70,6 @@ function IntensityInput({
   z: number;
   label: string;
   unit: string;
-  max: number;
   value: number;
   onChange: (next: number) => void;
   onSpawn?: () => void;
@@ -91,13 +81,12 @@ function IntensityInput({
         <input
           type="number"
           min={0}
-          max={max}
-          step={max > 100 ? 20 : 2}
+          step={20}
           defaultValue={value}
           key={value}
           onBlur={(event) => {
             const next = Number(event.target.value);
-            if (Number.isFinite(next) && next !== value) onChange(Math.min(max, Math.max(0, next)));
+            if (Number.isFinite(next) && next !== value) onChange(Math.max(0, next));
           }}
           className="w-full rounded border border-slate-700 bg-slate-800 px-1 py-0.5 text-center text-sm text-slate-100"
         />
@@ -141,14 +130,8 @@ export function GenerationBadges({
   const forwardPos = rowPositions(geo.leftEdge / 2, -geo.roadLength, forward.length, spacing);
   const backwardPos = rowPositions(geo.rightEdge / 2, geo.roadLength, backward.length, spacing);
 
-  const pedLeft: Entry = { spawnKind: "pedLeft", label: "Пешеходы →", field: "peds_left_vph", unit: "чел/ч", max: 2000 };
-  const pedRight: Entry = {
-    spawnKind: "pedRight",
-    label: "Пешеходы ←",
-    field: "peds_right_vph",
-    unit: "чел/ч",
-    max: 2000,
-  };
+  const pedLeft: Entry = { spawnKind: "pedLeft", label: "Пешеходы →", field: "peds_left_vph", unit: "чел/ч" };
+  const pedRight: Entry = { spawnKind: "pedRight", label: "Пешеходы ←", field: "peds_right_vph", unit: "чел/ч" };
 
   const requestSpawn = (kind: SpawnKind) => {
     if (!manualSpawnRef) return;
@@ -162,7 +145,6 @@ export function GenerationBadges({
       z={pos.z}
       label={entry.label}
       unit={entry.unit}
-      max={entry.max}
       value={crossing[entry.field] as number}
       onChange={(next) => onChange({ [entry.field]: next } as CrossingPatch)}
       onSpawn={manualSpawnRef ? () => requestSpawn(entry.spawnKind) : undefined}

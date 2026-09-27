@@ -155,7 +155,7 @@ export function InfoPanel({
               value={crossing.road_length}
               unit=" м"
               min={10}
-              max={200}
+              max={100000}
               step={5}
               disabled={busy}
               onChange={onRoadLengthChange}

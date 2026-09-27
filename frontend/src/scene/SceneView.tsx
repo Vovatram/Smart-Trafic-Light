@@ -152,8 +152,13 @@ export function SceneView({
     if (!placingType) setHover(null);
   }, [placingType]);
 
+  // без верхней границы на длину дороги камера должна видеть дальше 900 —
+  // иначе на длинной дороге сцена сама себя обрезает по far-плоскости;
+  // считаем от той же длины, что и туман, с запасом под orbit maxDistance
+  const far = Math.max(900, roadLength * 10 + 100);
+
   return (
-    <Canvas shadows camera={{ position: positions.perspective, fov: 42, near: 0.5, far: 900 }} dpr={[1, 2]}>
+    <Canvas shadows camera={{ position: positions.perspective, fov: 42, near: 0.5, far }} dpr={[1, 2]}>
       <color attach="background" args={["#0b1120"]} />
       <fog attach="fog" args={["#0b1120", roadLength * 4, roadLength * 10]} />
 

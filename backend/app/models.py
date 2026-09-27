@@ -80,21 +80,13 @@ class Crossing(Base):
         CheckConstraint("lane_width > 0", name="ck_lane_width"),
         CheckConstraint("road_length > 0", name="ck_road_length"),
         CheckConstraint("crossing_width > 0", name="ck_crossing_width"),
-        CheckConstraint("vph_forward between 0 and 2000", name="ck_vph_forward"),
-        CheckConstraint("vph_backward between 0 and 2000", name="ck_vph_backward"),
-        CheckConstraint("peds_left_vph between 0 and 2000", name="ck_peds_left"),
-        CheckConstraint("peds_right_vph between 0 and 2000", name="ck_peds_right"),
+        # интенсивность (vph_*, tram/bus/special_vph_*) — без верхней границы,
+        # по просьбе убрать ограничения; нижнюю (>=0) проверяет Pydantic
         CheckConstraint("all_red_after_cars_s between 1 and 15", name="ck_all_red_after_cars"),
         CheckConstraint("all_red_after_peds_s between 1 and 15", name="ck_all_red_after_peds"),
         CheckConstraint("button_min_green_s between 3 and 180", name="ck_button_min_green"),
         CheckConstraint("button_peds_s between 3 and 120", name="ck_button_peds"),
         CheckConstraint("log_retention_hours between 1 and 720", name="ck_log_retention"),
-        CheckConstraint("tram_vph_forward between 0 and 60", name="ck_tram_vph_forward"),
-        CheckConstraint("tram_vph_backward between 0 and 60", name="ck_tram_vph_backward"),
-        CheckConstraint("bus_vph_forward between 0 and 60", name="ck_bus_vph_forward"),
-        CheckConstraint("bus_vph_backward between 0 and 60", name="ck_bus_vph_backward"),
-        CheckConstraint("special_vph_forward between 0 and 30", name="ck_special_vph_forward"),
-        CheckConstraint("special_vph_backward between 0 and 30", name="ck_special_vph_backward"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -19,12 +19,13 @@ class CrossingIn(BaseModel):
     lane_width: float = Field(default=3.5, gt=1.0, le=6.0)
     lanes_forward: int = Field(default=2, ge=0, le=5)
     lanes_backward: int = Field(default=2, ge=0, le=5)
-    road_length: float = Field(default=40.0, ge=10.0, le=200.0)
+    road_length: float = Field(default=40.0, ge=10.0)  # без верхней границы — по просьбе убрать ограничения на длину
     crossing_width: float = Field(default=3.0, ge=1.5, le=8.0)
-    vph_forward: float = Field(default=300.0, ge=0, le=2000)
-    vph_backward: float = Field(default=300.0, ge=0, le=2000)
-    peds_left_vph: float = Field(default=120.0, ge=0, le=2000)
-    peds_right_vph: float = Field(default=120.0, ge=0, le=2000)
+    # без верхней границы — по просьбе убрать ограничения на интенсивность
+    vph_forward: float = Field(default=300.0, ge=0)
+    vph_backward: float = Field(default=300.0, ge=0)
+    peds_left_vph: float = Field(default=120.0, ge=0)
+    peds_right_vph: float = Field(default=120.0, ge=0)
     has_tram_forward: bool = False
     has_tram_backward: bool = False
     has_bus_forward: bool = False
@@ -35,12 +36,12 @@ class CrossingIn(BaseModel):
     tram_stop_backward: StopPosition = StopPosition.NONE
     bus_stop_forward: StopPosition = StopPosition.NONE
     bus_stop_backward: StopPosition = StopPosition.NONE
-    tram_vph_forward: float = Field(default=0.0, ge=0, le=60)
-    tram_vph_backward: float = Field(default=0.0, ge=0, le=60)
-    bus_vph_forward: float = Field(default=0.0, ge=0, le=60)
-    bus_vph_backward: float = Field(default=0.0, ge=0, le=60)
-    special_vph_forward: float = Field(default=0.0, ge=0, le=30)
-    special_vph_backward: float = Field(default=0.0, ge=0, le=30)
+    tram_vph_forward: float = Field(default=0.0, ge=0)
+    tram_vph_backward: float = Field(default=0.0, ge=0)
+    bus_vph_forward: float = Field(default=0.0, ge=0)
+    bus_vph_backward: float = Field(default=0.0, ge=0)
+    special_vph_forward: float = Field(default=0.0, ge=0)
+    special_vph_backward: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
     def check_lanes(self) -> "CrossingIn":
@@ -67,14 +68,14 @@ class CrossingUpdate(BaseModel):
     lane_width: float | None = Field(default=None, gt=1.0, le=6.0)
     lanes_forward: int | None = Field(default=None, ge=0, le=5)
     lanes_backward: int | None = Field(default=None, ge=0, le=5)
-    road_length: float | None = Field(default=None, ge=10.0, le=200.0)
+    road_length: float | None = Field(default=None, ge=10.0)
     crossing_width: float | None = Field(default=None, ge=1.5, le=8.0)
     vehicle_signal: VehicleSignal | None = None
     pedestrian_signal: PedestrianSignal | None = None
-    vph_forward: float | None = Field(default=None, ge=0, le=2000)
-    vph_backward: float | None = Field(default=None, ge=0, le=2000)
-    peds_left_vph: float | None = Field(default=None, ge=0, le=2000)
-    peds_right_vph: float | None = Field(default=None, ge=0, le=2000)
+    vph_forward: float | None = Field(default=None, ge=0)
+    vph_backward: float | None = Field(default=None, ge=0)
+    peds_left_vph: float | None = Field(default=None, ge=0)
+    peds_right_vph: float | None = Field(default=None, ge=0)
     signal_mode: SignalMode | None = None
     active_cycle_id: int | None = None
     all_red_after_cars_s: float | None = Field(default=None, ge=1, le=15)
@@ -92,12 +93,12 @@ class CrossingUpdate(BaseModel):
     tram_stop_backward: StopPosition | None = None
     bus_stop_forward: StopPosition | None = None
     bus_stop_backward: StopPosition | None = None
-    tram_vph_forward: float | None = Field(default=None, ge=0, le=60)
-    tram_vph_backward: float | None = Field(default=None, ge=0, le=60)
-    bus_vph_forward: float | None = Field(default=None, ge=0, le=60)
-    bus_vph_backward: float | None = Field(default=None, ge=0, le=60)
-    special_vph_forward: float | None = Field(default=None, ge=0, le=30)
-    special_vph_backward: float | None = Field(default=None, ge=0, le=30)
+    tram_vph_forward: float | None = Field(default=None, ge=0)
+    tram_vph_backward: float | None = Field(default=None, ge=0)
+    bus_vph_forward: float | None = Field(default=None, ge=0)
+    bus_vph_backward: float | None = Field(default=None, ge=0)
+    special_vph_forward: float | None = Field(default=None, ge=0)
+    special_vph_backward: float | None = Field(default=None, ge=0)
 
 
 class ItsDeviceIn(BaseModel):
