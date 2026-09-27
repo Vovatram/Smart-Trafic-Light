@@ -461,6 +461,28 @@ function MultiTonePod({
   );
 }
 
+/**
+ * Продольная линия (вдоль всей длины кузова, а не поперёк, как секции
+ * MultiTonePod) — единственное, что рисует I2V/V2I: включается/выключается
+ * целиком (см. applyTransitDetection), цвет не меняется.
+ */
+function V2IMark({
+  depth,
+  y,
+  meshRef,
+}: {
+  depth: number;
+  y: number;
+  meshRef: (el: THREE.Mesh | null) => void;
+}) {
+  return (
+    <mesh ref={meshRef} position={[0, y, 0]} visible={false}>
+      <boxGeometry args={[0.15, 0.04, depth]} />
+      <meshStandardMaterial color={I2V_MARK_COLOR} emissive={I2V_MARK_COLOR} emissiveIntensity={1.2} />
+    </mesh>
+  );
+}
+
 /** Раскладывает colors.length секций поперёк depth, остальные прячет. */
 function applyTones(tones: (THREE.Mesh | null)[], depth: number, colors: string[]) {
   const n = Math.min(colors.length, tones.length);
@@ -505,23 +527,28 @@ function applyDetection(
   applyTones(tones, depth, colors);
 }
 
-// I2V видит только трамвай/автобус — не по конусу обзора, а просто в радиусе
-// (isWithinFov с fov_deg=360 у i2v-объекта — на любой угол проходит,
-// остаётся только проверка дальности), поэтому не участвует в
-// detectingColors для машин/пешеходов/спецтехники (см. detection.sensorDevices,
-// он i2v сразу отфильтровывает)
+// I2V видит только трамвай/автобус/спецтехнику — не по конусу обзора, а
+// просто в радиусе (isWithinFov с fov_deg=360 у i2v-объекта — на любой угол
+// проходит, остаётся только проверка дальности), обычные машины и пешеходы
+// ему не видны вовсе (см. detection.sensorDevices — он i2v отфильтровывает
+// из списка, который используют они). Раскраска по I2V — отдельная от
+// обычных тонов детекции продольная красная линия (см. mark ниже), а не
+// ещё один цвет в MultiTonePod — I2V ничего не добавляет к самим тонам.
 const I2V_MARK_COLOR = "#ef4444";
 
 /**
- * То же самое, что applyDetection, но только для трамвая/автобуса —
- * дополнительно проверяет i2v-датчики (дальность 300 м по умолчанию, без
- * угла обзора) и, если хотя бы один "видит" агента, добавляет к обычным
- * цветам детекции ещё и красную полосу поперёк кузова.
+ * То же самое, что applyDetection, но дополнительно проверяет i2v-датчики
+ * (дальность 300 м по умолчанию, без угла обзора) и включает/выключает
+ * отдельный меш продольной линии (mark) — единственное, что I2V рисует "от
+ * себя"; обычная раскраска по тонам (camColors) не меняется. Если агента
+ * видит ТОЛЬКО I2V (обычные сенсоры — нет), тело остаётся без тонов (тонов
+ * будет 0 — applyTones просто всё спрячет), видна только линия.
  */
 function applyTransitDetection(
   slot: Slot,
   group: THREE.Group | null,
   tones: (THREE.Mesh | null)[],
+  mark: THREE.Mesh | null,
   depth: number,
   sensors: ReturnType<typeof sensorDevices>,
   i2vSensors: Crossing["its_devices"],
@@ -531,19 +558,22 @@ function applyTransitDetection(
   if (!group) return;
   if (!slot.active) {
     group.visible = false;
+    if (mark) mark.visible = false;
     return;
   }
   const colors = detectingColors(sensors, allDevices, slot.x, slot.z);
   const seenByI2V = i2vSensors.some((d) => isWithinFov(d, slot.x, slot.z));
   if (colors.length === 0 && !seenByI2V) {
     group.visible = false;
+    if (mark) mark.visible = false;
     return;
   }
   group.visible = true;
   group.position.set(slot.x, 0, slot.z);
   group.rotation.y =
     axis === "z" ? (slot.dir > 0 ? 0 : Math.PI) : slot.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-  applyTones(tones, depth, seenByI2V ? [...colors, I2V_MARK_COLOR] : colors);
+  applyTones(tones, depth, colors);
+  if (mark) mark.visible = seenByI2V;
 }
 
 /**
@@ -652,10 +682,13 @@ export function TrafficSimulation({
   const pedTones = useRef<(THREE.Mesh | null)[][]>(makeTones(PED_POOL));
   const tramGroups = useRef<(THREE.Group | null)[]>([]);
   const tramTones = useRef<(THREE.Mesh | null)[][]>(makeTones(TRAM_POOL));
+  const tramV2IMarks = useRef<(THREE.Mesh | null)[]>([]);
   const busGroups = useRef<(THREE.Group | null)[]>([]);
   const busTones = useRef<(THREE.Mesh | null)[][]>(makeTones(BUS_POOL));
+  const busV2IMarks = useRef<(THREE.Mesh | null)[]>([]);
   const specialGroups = useRef<(THREE.Group | null)[]>([]);
   const specialTones = useRef<(THREE.Mesh | null)[][]>(makeTones(SPECIAL_POOL));
+  const specialV2IMarks = useRef<(THREE.Mesh | null)[]>([]);
   const specialBeacons = useRef<(THREE.Mesh | null)[]>([]);
 
   useFrame((state, rawDelta) => {
@@ -818,6 +851,9 @@ export function TrafficSimulation({
       for (const g of tramGroups.current) if (g) g.visible = false;
       for (const g of busGroups.current) if (g) g.visible = false;
       for (const g of specialGroups.current) if (g) g.visible = false;
+      for (const m of tramV2IMarks.current) if (m) m.visible = false;
+      for (const m of busV2IMarks.current) if (m) m.visible = false;
+      for (const m of specialV2IMarks.current) if (m) m.visible = false;
     } else {
       cars.current.forEach((slot, i) =>
         applyDetection(slot, carGroups.current[i], carTones.current[i], CAR_LENGTH, sensors, crossing.its_devices, "z"),
@@ -830,6 +866,7 @@ export function TrafficSimulation({
           slot,
           tramGroups.current[i],
           tramTones.current[i],
+          tramV2IMarks.current[i],
           TRAM_LENGTH,
           sensors,
           i2vSensors,
@@ -842,6 +879,7 @@ export function TrafficSimulation({
           slot,
           busGroups.current[i],
           busTones.current[i],
+          busV2IMarks.current[i],
           BUS_LENGTH,
           sensors,
           i2vSensors,
@@ -850,12 +888,14 @@ export function TrafficSimulation({
         ),
       );
       specials.current.forEach((slot, i) =>
-        applyDetection(
+        applyTransitDetection(
           slot,
           specialGroups.current[i],
           specialTones.current[i],
+          specialV2IMarks.current[i],
           SPECIAL_LENGTH,
           sensors,
+          i2vSensors,
           crossing.its_devices,
           "z",
         ),
@@ -975,6 +1015,7 @@ export function TrafficSimulation({
             y={1.2}
             refs={(toneIndex, el) => (tramTones.current[i][toneIndex] = el)}
           />
+          <V2IMark depth={TRAM_LENGTH} y={2.45} meshRef={(el) => (tramV2IMarks.current[i] = el)} />
         </group>
       ))}
       {Array.from({ length: BUS_POOL }).map((_, i) => (
@@ -986,6 +1027,7 @@ export function TrafficSimulation({
             y={1.1}
             refs={(toneIndex, el) => (busTones.current[i][toneIndex] = el)}
           />
+          <V2IMark depth={BUS_LENGTH} y={2.25} meshRef={(el) => (busV2IMarks.current[i] = el)} />
         </group>
       ))}
       {Array.from({ length: SPECIAL_POOL }).map((_, i) => (
@@ -997,6 +1039,7 @@ export function TrafficSimulation({
             y={0.7}
             refs={(toneIndex, el) => (specialTones.current[i][toneIndex] = el)}
           />
+          <V2IMark depth={SPECIAL_LENGTH} y={1.45} meshRef={(el) => (specialV2IMarks.current[i] = el)} />
           {/* маячок — цвет мигает в useFrame, независимо от раскраски детекции */}
           <mesh ref={(el) => (specialBeacons.current[i] = el)} position={[0, 1.55, 0]}>
             <sphereGeometry args={[0.14, 8, 8]} />
